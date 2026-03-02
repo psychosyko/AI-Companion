@@ -71,7 +71,7 @@ The `config.json` file is the central hub for the app. You can modify it to chan
 
 The easiest way to start Nazuna is by using the provided batch file:
 
-1.  Double-click **`START_NAZUNA.bat`**.
+1.  Double-click **`START.bat`**.
 2.  Three windows will open:
     *   **The Voice Server:** Handles the RVC processing.
     *   **The Bridge:** Connects the AI logic and local memory.
