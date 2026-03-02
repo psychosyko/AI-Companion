@@ -5,20 +5,21 @@
 node_modules/
 venv/
 __pycache__/
+.DS_Store
 
-# Local Databases/Memory
+# Local Memory & History
 memory.json
 chat_history.json
-voice_logs/
 
-# Temporary Audio
+# Large AI Assets (Manual download required by user)
+RVC_Nazuna/
+
+# Audio Logs & Temp Files
+voice_logs/
 *.wav
 base_*.wav
 nazuna_*.wav
 
-# 
-ai-companion/RVC_Nazuna/
-
-# Build files
+# Build Files
 dist/
-.DS_Store
+build/
