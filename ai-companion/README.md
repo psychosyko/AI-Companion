@@ -1,7 +1,3 @@
-Here is the comprehensive **README.md** file for your project. You can copy this directly into a new file named `README.md` in your project root.
-
----
-
 # 🦇 Nazuna AI Companion
 
 A highly customizable, local-first AI companion featuring **Nazuna Nanakusa** from *Call of the Night*. This project integrates an LLM "brain" via OpenAI, a real-time 3D VRM model, and a high-quality local voice pipeline using **RVC** (Retrieval-based Voice Conversion).
