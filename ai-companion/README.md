@@ -15,8 +15,8 @@ Ensure you have the following installed on your Windows machine:
 ### 2. Setup the Project
 Clone the repository and install the Node.js dependencies for the bridge and frontend:
 ```bash
-git clone https://github.com/YOUR_USERNAME/Nazuna-AI.git
-cd Nazuna-AI
+git clone https://github.com/psychosyko/AI-Companion.git
+cd ai-companion
 npm install
 ```
 
