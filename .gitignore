@@ -1,0 +1,24 @@
+# Secrets
+.env
+
+# Dependencies
+node_modules/
+venv/
+__pycache__/
+
+# Local Databases/Memory
+memory.json
+chat_history.json
+voice_logs/
+
+# Temporary Audio
+*.wav
+base_*.wav
+nazuna_*.wav
+
+# 
+ai-companion/RVC_Nazuna/AmamiyaSora.index
+
+# Build files
+dist/
+.DS_Store

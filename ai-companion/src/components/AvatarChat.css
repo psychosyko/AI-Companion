@@ -1,0 +1,236 @@
+/* Container and Canvas */
+.avatar-container {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    background: radial-gradient(circle at center, #1a0b2e 0%, #000000 100%);
+    overflow: hidden;
+    font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+.avatar-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+}
+
+/* Phone Frame */
+.phone-frame {
+    position: absolute;
+    bottom: 30px;
+    right: 30px;
+    width: 400px;
+    /* Increased for more breathing room */
+    height: 600px;
+    /* Slightly taller to match the new width */
+    background: rgba(20, 15, 35, 0.8);
+    backdrop-filter: blur(20px);
+    border-radius: 32px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    display: flex;
+    flex-direction: column;
+    z-index: 10;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+/* Header */
+.chat-header {
+    padding: 20px;
+    background: rgba(255, 255, 255, 0.03);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.status-dot {
+    width: 10px;
+    height: 10px;
+    background: #00ffa3;
+    border-radius: 50%;
+    box-shadow: 0 0 10px #00ffa3;
+}
+
+.header-title {
+    color: white;
+    font-size: 1rem;
+    font-weight: 600;
+    flex: 1;
+}
+
+.call-badge {
+    font-size: 0.75rem;
+    color: #ff69b4;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    animation: pulse 2s infinite;
+}
+
+/* Messages Area */
+.message-area {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    scrollbar-width: none;
+    /* Firefox */
+}
+
+.message-area::-webkit-scrollbar {
+    display: none;
+}
+
+/* Chrome/Safari */
+
+.user-row {
+    align-self: flex-end;
+    max-width: 85%;
+}
+
+.ai-row {
+    align-self: flex-start;
+    max-width: 85%;
+}
+
+.user-bubble {
+    background: #ff69b4;
+    color: white;
+    padding: 12px 16px;
+    border-radius: 20px 20px 4px 20px;
+    font-size: 0.95rem;
+    box-shadow: 0 4px 15px rgba(255, 105, 180, 0.3);
+}
+
+.ai-bubble {
+    background: rgba(255, 255, 255, 0.08);
+    color: #f0f0ff;
+    padding: 12px 16px;
+    border-radius: 20px 20px 20px 4px;
+    font-size: 0.95rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.loading-text {
+    color: #ff69b4;
+    font-size: 0.85rem;
+    opacity: 0.9;
+    font-style: italic;
+    padding: 10px;
+    animation: pulse 1.5s infinite; /* Make it pulse so it looks active */
+}
+
+.input-area {
+    padding: 15px 20px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    background: rgba(0, 0, 0, 0.4);
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    box-sizing: border-box;
+}
+
+.chat-input {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 28px;
+    padding: 14px 20px;
+    color: white;
+    outline: none;
+    font-size: 1rem;
+    transition: border 0.3s;
+}
+
+.chat-input:focus {
+    border-color: #ff69b4;
+}
+
+.icon-btn {
+    width: 56px;
+    height: 56px;
+    min-width: 56px;
+    border-radius: 50%;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.15);
+    transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.icon-btn:hover {
+    transform: scale(1.1);
+    background: rgba(255, 255, 255, 0.25);
+}
+
+.icon-btn.active {
+    background: #ff3b30;
+    box-shadow: 0 0 20px rgba(255, 59, 48, 0.5);
+}
+
+.send-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.2s;
+
+    /* This forces the button to stay a specific size */
+    width: 50px;
+    height: 50px;
+    min-width: 50px; /* Prevents shrinking */
+    padding: 0;
+    margin-right: 2px; /* Small buffer from the edge */
+    flex-shrink: 0;
+}
+
+.send-btn:hover { 
+    transform: scale(1.15); 
+}
+
+.send-btn svg {
+    width: 32px !important; /* Force the size bigger */
+    height: 32px !important;
+    display: block;
+    filter: drop-shadow(0 0 5px rgba(255, 105, 180, 0.4)); /* Optional neon glow */
+}
+.clear-btn {
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    color: #ff69b4;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 0.7rem;
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: all 0.2s;
+}
+
+.clear-btn:hover {
+    background: rgba(255, 105, 180, 0.2);
+    transform: scale(1.05);
+}
+@keyframes pulse {
+    0% {
+        opacity: 0.5;
+    }
+
+    50% {
+        opacity: 1;
+    }
+
+    100% {
+        opacity: 0.5;
+    }
+}
