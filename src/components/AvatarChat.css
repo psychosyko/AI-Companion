@@ -1,11 +1,31 @@
-/* Container and Canvas */
+/* --- Variables --- */
+:root {
+    --nazuna-pink: #ff69b4;
+    --nazuna-purple: #1a0b2e;
+    /* Transparency for the main frame */
+    --glass-bg: rgba(15, 10, 25, 0.4); 
+}
+
+/* --- Global Reset --- */
+html, body {
+    overflow: hidden;
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overscroll-behavior: none;
+    background-color: black;
+}
+
 .avatar-container {
-    position: relative;
+    position: fixed;
+    top: 0;
+    left: 0;
     width: 100vw;
     height: 100vh;
-    background: radial-gradient(circle at center, #1a0b2e 0%, #000000 100%);
+    background: radial-gradient(circle at center, var(--nazuna-purple) 0%, #000000 100%);
     overflow: hidden;
-    font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    font-family: 'Segoe UI', Roboto, sans-serif;
 }
 
 .avatar-canvas {
@@ -13,224 +33,192 @@
     top: 0;
     left: 0;
     width: 100%;
-    height: 100%;
+    height: 100vh;
     z-index: 1;
 }
 
-/* Phone Frame */
+/* --- Desktop Phone Frame (Glass Style) --- */
 .phone-frame {
     position: absolute;
     bottom: 30px;
     right: 30px;
-    width: 400px;
-    /* Increased for more breathing room */
-    height: 600px;
-    /* Slightly taller to match the new width */
-    background: rgba(20, 15, 35, 0.8);
-    backdrop-filter: blur(20px);
-    border-radius: 32px;
+    width: 380px;
+    height: 580px;
+    background: var(--glass-bg);
+    /* Frosted glass effect: re-enabled but subtle */
+    backdrop-filter: blur(10px); 
+    border-radius: 28px;
     border: 1px solid rgba(255, 255, 255, 0.1);
     display: flex;
     flex-direction: column;
     z-index: 10;
-    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+    box-shadow: 0 15px 40px rgba(0, 0, 0, 0.5);
     overflow: hidden;
     transition: all 0.3s ease;
 }
 
-/* Header */
-.chat-header {
-    padding: 20px;
-    background: rgba(255, 255, 255, 0.03);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-    display: flex;
-    align-items: center;
-    gap: 12px;
+/* --- Message Bubbles (More Opaque as requested) --- */
+.user-bubble { 
+    /* High opacity pink so it pops */
+    background: rgba(255, 105, 180, 0.9); 
+    color: white; 
+    padding: 10px 14px; 
+    border-radius: 18px 18px 4px 18px; 
+    font-size: 0.9rem; 
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
 }
 
-.status-dot {
-    width: 10px;
-    height: 10px;
-    background: #00ffa3;
-    border-radius: 50%;
-    box-shadow: 0 0 10px #00ffa3;
-}
-
-.header-title {
-    color: white;
-    font-size: 1rem;
-    font-weight: 600;
-    flex: 1;
-}
-
-.call-badge {
-    font-size: 0.75rem;
-    color: #ff69b4;
-    font-weight: bold;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    animation: pulse 2s infinite;
-}
-
-/* Messages Area */
-.message-area {
-    flex: 1;
-    padding: 20px;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    scrollbar-width: none;
-    /* Firefox */
-}
-
-.message-area::-webkit-scrollbar {
-    display: none;
-}
-
-/* Chrome/Safari */
-
-.user-row {
-    align-self: flex-end;
-    max-width: 85%;
-}
-
-.ai-row {
-    align-self: flex-start;
-    max-width: 85%;
-}
-
-.user-bubble {
-    background: #ff69b4;
-    color: white;
-    padding: 12px 16px;
-    border-radius: 20px 20px 4px 20px;
-    font-size: 0.95rem;
-    box-shadow: 0 4px 15px rgba(255, 105, 180, 0.3);
-}
-
-.ai-bubble {
-    background: rgba(255, 255, 255, 0.08);
-    color: #f0f0ff;
-    padding: 12px 16px;
-    border-radius: 20px 20px 20px 4px;
-    font-size: 0.95rem;
+.ai-bubble { 
+    /* Opaque dark purple so text is clear against Nazuna */
+    background: rgba(40, 30, 60, 0.8); 
+    backdrop-filter: blur(5px);
+    color: #f0f0ff; 
+    padding: 10px 14px; 
+    border-radius: 18px 18px 18px 4px; 
+    font-size: 0.9rem; 
     border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
 }
 
-.loading-text {
-    color: #ff69b4;
-    font-size: 0.85rem;
-    opacity: 0.9;
-    font-style: italic;
-    padding: 10px;
-    animation: pulse 1.5s infinite; /* Make it pulse so it looks active */
-}
-
-.input-area {
-    padding: 15px 20px;
+/* --- Buttons & Icons --- */
+.icon-btn, .send-btn {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    border-radius: 50%;
+    border: none;
+    cursor: pointer;
     display: flex;
     align-items: center;
-    gap: 15px;
-    background: rgba(0, 0, 0, 0.4);
+    justify-content: center;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+    padding: 0;
+}
+
+.icon-btn { background: rgba(255, 255, 255, 0.15); }
+.icon-btn:hover { background: rgba(255, 255, 255, 0.25); transform: scale(1.05); }
+.icon-btn.active { background: #ff3b30; box-shadow: 0 0 15px rgba(255, 59, 48, 0.4); }
+
+.send-btn { background: transparent; }
+.send-btn:hover { transform: scale(1.1); }
+.send-btn:disabled { opacity: 0.3; }
+
+.icon-btn svg, .send-btn svg {
+    width: 24px !important;
+    height: 24px !important;
+}
+
+.send-btn svg {
+    fill: var(--nazuna-pink);
+    filter: drop-shadow(0 0 8px rgba(255, 105, 180, 0.6));
+}
+
+/* --- Input Area --- */
+.input-area {
+    padding: 12px 18px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(0, 0, 0, 0.6); /* Darker for button contrast */
     border-top: 1px solid rgba(255, 255, 255, 0.05);
-    box-sizing: border-box;
 }
 
 .chat-input {
     flex: 1;
-    background: rgba(255, 255, 255, 0.08);
+    min-width: 0;
+    background: rgba(255, 255, 255, 0.05);
     border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 28px;
-    padding: 14px 20px;
+    border-radius: 22px;
+    padding: 10px 16px;
     color: white;
     outline: none;
-    font-size: 1rem;
-    transition: border 0.3s;
+    font-size: 0.95rem;
 }
 
-.chat-input:focus {
-    border-color: #ff69b4;
+/* --- MOBILE UI OVERRIDE (Tuned Transparency) --- */
+@media (max-width: 768px) {
+    .phone-frame {
+        bottom: 0;
+        right: 0;
+        width: 100%;
+        height: 45vh;
+        border-radius: 20px 20px 0 0;
+        
+        /* Transparent background so you can see her through the chat */
+        background: rgba(10, 5, 20, 0.3); 
+        backdrop-filter: blur(8px); 
+        
+        position: fixed;
+        border: none;
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .icon-btn, .send-btn {
+        width: 48px;
+        height: 48px;
+        min-width: 48px;
+    }
 }
 
-.icon-btn {
-    width: 56px;
-    height: 56px;
-    min-width: 56px;
+/* --- Chat Elements --- */
+.chat-header {
+    padding: 12px 18px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(0, 0, 0, 0.3);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    background: #00ffa3;
     border-radius: 50%;
-    border: none;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(255, 255, 255, 0.15);
-    transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    box-shadow: 0 0 8px #00ffa3;
 }
 
-.icon-btn:hover {
-    transform: scale(1.1);
-    background: rgba(255, 255, 255, 0.25);
+.header-title {
+    color: white;
+    font-size: 0.9rem;
+    font-weight: 600;
+    flex: 1;
 }
 
-.icon-btn.active {
-    background: #ff3b30;
-    box-shadow: 0 0 20px rgba(255, 59, 48, 0.5);
-}
-
-.send-btn {
-    background: none;
-    border: none;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: transform 0.2s;
-
-    /* This forces the button to stay a specific size */
-    width: 50px;
-    height: 50px;
-    min-width: 50px; /* Prevents shrinking */
-    padding: 0;
-    margin-right: 2px; /* Small buffer from the edge */
-    flex-shrink: 0;
-}
-
-.send-btn:hover { 
-    transform: scale(1.15); 
-}
-
-.send-btn svg {
-    width: 32px !important; /* Force the size bigger */
-    height: 32px !important;
-    display: block;
-    filter: drop-shadow(0 0 5px rgba(255, 105, 180, 0.4)); /* Optional neon glow */
-}
 .clear-btn {
-    background: rgba(255, 255, 255, 0.1);
-    border: none;
-    color: #ff69b4;
-    padding: 4px 10px;
-    border-radius: 6px;
-    font-size: 0.7rem;
+    background: transparent;
+    border: 1px solid rgba(255, 105, 180, 0.3);
+    color: var(--nazuna-pink);
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 0.65rem;
     cursor: pointer;
-    text-transform: uppercase;
-    transition: all 0.2s;
 }
 
-.clear-btn:hover {
-    background: rgba(255, 105, 180, 0.2);
-    transform: scale(1.05);
+.message-area {
+    flex: 1;
+    padding: 15px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    scrollbar-width: none;
 }
+.message-area::-webkit-scrollbar { display: none; }
+
+.user-row { align-self: flex-end; max-width: 85%; }
+.ai-row { align-self: flex-start; max-width: 85%; }
+
+.loading-text {
+    color: var(--nazuna-pink);
+    font-size: 0.8rem;
+    font-style: italic;
+    padding: 5px 15px;
+    animation: pulse 1.5s infinite;
+}
+
 @keyframes pulse {
-    0% {
-        opacity: 0.5;
-    }
-
-    50% {
-        opacity: 1;
-    }
-
-    100% {
-        opacity: 0.5;
-    }
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 1; }
 }

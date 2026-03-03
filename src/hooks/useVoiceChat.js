@@ -12,6 +12,9 @@ export function useVoiceChat(config, mouthTarget, emotionTarget) {
     const isCallModeActive = useRef(false);
     const isAISpeaking = useRef(false);
 
+    // Automatically detects the host (localhost or 192.168.1.67)
+    const bridgeUrl = `http://${window.location.hostname}:3001`;
+
     // 1. Sync History on Load
     useEffect(() => {
         if (config && config.history) {
@@ -30,11 +33,13 @@ export function useVoiceChat(config, mouthTarget, emotionTarget) {
         if (!msg || !msg.trim() || loading || !config) return;
 
         setLoading(true);
-        const newLog = [...chatLog, { role: "User", content: msg }];
+        const userEntry = { role: "User", content: msg };
+        const newLog = [...chatLog, userEntry];
         setChatLog(newLog);
 
         try {
-            const res = await fetch("http://localhost:3001/chat", {
+            // Updated to use dynamic bridgeUrl
+            const res = await fetch(`${bridgeUrl}/chat`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -61,7 +66,7 @@ export function useVoiceChat(config, mouthTarget, emotionTarget) {
             console.error("Chat Error:", err);
             setLoading(false);
         }
-    }, [chatLog, config, loading, emotionTarget]);
+    }, [chatLog, config, loading, emotionTarget, bridgeUrl]);
 
     /**
      * Voice Logic: Plays RVC Audio
@@ -70,11 +75,11 @@ export function useVoiceChat(config, mouthTarget, emotionTarget) {
         try {
             const cleanText = text.replace(/\[.*?\]/g, "").trim();
 
-            // Turn off mic before AI speaks to avoid feedback
             if (recognitionRef.current) recognitionRef.current.stop();
             isAISpeaking.current = true;
 
-            const response = await fetch("http://localhost:3001/tts", {
+            // Updated to use dynamic bridgeUrl
+            const response = await fetch(`${bridgeUrl}/tts`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ text: cleanText }),
@@ -103,7 +108,6 @@ export function useVoiceChat(config, mouthTarget, emotionTarget) {
             audio.onended = () => {
                 isAISpeaking.current = false;
                 analyserRef.current = null;
-                // Restart mic if we are in Call Mode
                 if (isCallModeActive.current) {
                     try { recognitionRef.current.start(); } catch (e) { }
                 }

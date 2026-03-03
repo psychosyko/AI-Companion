@@ -17,6 +17,6 @@
   "server_settings": {
     "bridge_port": 3001,
     "voice_port": 5000,
-    "frontend_url": "http://localhost:5173"
+     "frontend_url": "*"
   }
 }
