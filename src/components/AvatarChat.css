@@ -202,7 +202,7 @@ html, body {
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 12px;
     scrollbar-width: none;
 }
 .message-area::-webkit-scrollbar { display: none; }

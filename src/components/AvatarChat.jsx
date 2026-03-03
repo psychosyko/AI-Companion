@@ -18,11 +18,11 @@ export default function AvatarChat() {
             .catch(err => console.error("Bridge unreachable:", err));
     }, [bridgeUrl]);
 
-    const { mouthTarget, emotionTarget } = useAvatar(mountRef, config);
-    const { 
-        chatLog, setChatLog, loading, sendMessage, 
-        analyserRef, isAISpeaking, isListening, toggleCallMode 
-    } = useVoiceChat(config, mouthTarget, emotionTarget);
+    const { mouthTarget, emotionTarget, actionTarget } = useAvatar(mountRef, config);
+    const {
+        chatLog, setChatLog, loading, sendMessage,
+        analyserRef, isAISpeaking, isListening, toggleCallMode
+    } = useVoiceChat(config, mouthTarget, emotionTarget, actionTarget);
 
     useEffect(() => {
         chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -80,13 +80,19 @@ export default function AvatarChat() {
                     </div>
 
                     <div className="message-area">
-                        {chatLog.map((c, i) => (
-                            <div key={i} className={c.role === "User" ? "user-row" : "ai-row"}>
-                                <div className={c.role === "User" ? "user-bubble" : "ai-bubble"}>
-                                    {c.content.replace(/\[.*?\]/g, "").trim()}
+                        {chatLog.map((c, i) => {
+                            // We check for 'user' or 'User' regardless of capitalization
+                            const isUser = c.role.toLowerCase() === "user";
+
+                            return (
+                                <div key={i} className={isUser ? "user-row" : "ai-row"}>
+                                    <div className={isUser ? "user-bubble" : "ai-bubble"}>
+                                        {/* Strip out [TAGS] and {curly braces} before showing text */}
+                                        {c.content.replace(/\[.*?\]/g, "").replace(/\{.*?\}/g, "").trim()}
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                         {loading && <div className="loading-text">thinking...</div>}
                         <div ref={chatEndRef} />
                     </div>

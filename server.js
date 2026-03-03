@@ -63,34 +63,46 @@ app.post("/chat", async (req, res) => {
         const history = req.body.messages;
 
         const systemPrompt = `
-${config.character.personality_prompt}
+        ${config.character.personality_prompt}
 
-### USER CONTEXT
-- You are talking to ${config.character.user_name}.
-- Current things you remember about ${config.character.user_name}:
-${memory.length > 0 ? memory.map(m => "- " + m).join("\n") : "Nothing yet."}
+        ### USER CONTEXT
+        - You are talking to ${config.character.user_name}.
+        - Things you remember about them:
+        ${memory.length > 0 ? memory.map(m => "- " + m).join("\n") : "Nothing yet."}
 
-### LONG-TERM MEMORY INSTRUCTION
-If the user shares personal details, preferences, or habits, you must save them to your permanent memory.
-To do this, append the following tag to the end of your response: [MEMORY: specific fact]
-Example: "I'll remember that you like rain. [MEMORY: likes rainy weather]"
-This tag will be hidden from the user.
-`;
+        ### LONG-TERM MEMORY INSTRUCTION
+        If the user shares personal details, save them using: [MEMORY: specific fact]
+        `;
 
         const response = await fetch("https://api.openai.com/v1/chat/completions", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                "Authorization": `Bearer ${process.env.OPENAI_API_KEY}` // 3. Use the ENV variable
+                "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
             },
             body: JSON.stringify({
                 model: "gpt-4o-mini",
-                messages: [{ role: "system", content: systemPrompt }, ...history],
+                messages: [
+                    { role: "system", content: systemPrompt },
+                    // This line fixes the error by forcing roles to lowercase 
+                    // and mapping 'Nazuna' or 'Assistant' to 'assistant'
+                    ...history.map(m => ({
+                        role: m.role.toLowerCase() === "user" ? "user" : "assistant",
+                        content: m.content
+                    }))
+                ],
                 temperature: 0.8,
             })
         });
 
         const data = await response.json();
+
+        // --- NEW SAFETY CHECK ---
+        if (!data.choices || data.choices.length === 0) {
+            console.error("❌ OpenAI API Error:", data.error || data);
+            return res.status(500).json({ error: "AI returned an empty response or error." });
+        }
+
         let aiText = data.choices[0].message.content;
 
         // Extract and save memory
@@ -98,8 +110,6 @@ This tag will be hidden from the user.
         if (memoryMatch) {
             const newFact = memoryMatch[1].trim();
             const currentMemory = loadJson(MEMORY_PATH);
-
-            // Only add if the fact is somewhat new (case-insensitive check)
             const alreadyExists = currentMemory.some(m => m.toLowerCase() === newFact.toLowerCase());
 
             if (!alreadyExists) {
@@ -107,8 +117,6 @@ This tag will be hidden from the user.
                 saveJson(MEMORY_PATH, currentMemory);
                 console.log(`✨ Memory Updated: ${newFact}`);
             }
-
-            // Clean all memory tags from the final text
             aiText = aiText.replace(/\[MEMORY:.*?\]/gi, "").trim();
             data.choices[0].message.content = aiText;
         }
@@ -119,8 +127,8 @@ This tag will be hidden from the user.
 
         res.json(data);
     } catch (err) {
-        console.error("Chat Error:", err);
-        res.status(500).send({ error: "AI failed" });
+        console.error("Server Logic Error:", err);
+        res.status(500).json({ error: "Internal server error" });
     }
 });
 

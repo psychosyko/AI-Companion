@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 
-export function useVoiceChat(config, mouthTarget, emotionTarget) {
+export function useVoiceChat(config, mouthTarget, emotionTarget, actionTarget) {
     const [chatLog, setChatLog] = useState([]);
     const [loading, setLoading] = useState(false);
     const [isListening, setIsListening] = useState(false);
@@ -9,13 +9,11 @@ export function useVoiceChat(config, mouthTarget, emotionTarget) {
     const analyserRef = useRef(null);
     const recognitionRef = useRef(null);
 
-    const isCallModeActive = useRef(false);
+    const isCallActive = useRef(false);
     const isAISpeaking = useRef(false);
 
-    // Automatically detects the host (localhost or 192.168.1.67)
     const bridgeUrl = `http://${window.location.hostname}:3001`;
 
-    // 1. Sync History on Load
     useEffect(() => {
         if (config && config.history) {
             const formatted = config.history.map(m => ({
@@ -26,59 +24,12 @@ export function useVoiceChat(config, mouthTarget, emotionTarget) {
         }
     }, [config]);
 
-    /**
-     * AI Logic: Sends user message to OpenAI via Bridge
-     */
-    const sendMessage = useCallback(async (msg) => {
-        if (!msg || !msg.trim() || loading || !config) return;
-
-        setLoading(true);
-        const userEntry = { role: "User", content: msg };
-        const newLog = [...chatLog, userEntry];
-        setChatLog(newLog);
-
-        try {
-            // Updated to use dynamic bridgeUrl
-            const res = await fetch(`${bridgeUrl}/chat`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    messages: newLog.slice(-10).map(m => ({
-                        role: m.role === "User" ? "user" : "assistant",
-                        content: m.content
-                    }))
-                })
-            });
-
-            const data = await res.json();
-            if (data.choices && data.choices[0]) {
-                const aiText = data.choices[0].message.content;
-
-                emotionTarget.current = {
-                    happy: aiText.includes("[HAPPY]") ? 1 : 0,
-                    relaxed: aiText.includes("[RELAXED]") ? 1 : 0,
-                    surprised: aiText.includes("[SURPRISED]") ? 1 : 0
-                };
-
-                speak(aiText, aiText);
-            }
-        } catch (err) {
-            console.error("Chat Error:", err);
-            setLoading(false);
-        }
-    }, [chatLog, config, loading, emotionTarget, bridgeUrl]);
-
-    /**
-     * Voice Logic: Plays RVC Audio
-     */
-    async function speak(text, fullAiResponse) {
+    const speak = async (text, fullAiResponse) => {
         try {
             const cleanText = text.replace(/\[.*?\]/g, "").trim();
-
             if (recognitionRef.current) recognitionRef.current.stop();
             isAISpeaking.current = true;
 
-            // Updated to use dynamic bridgeUrl
             const response = await fetch(`${bridgeUrl}/tts`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -108,9 +59,7 @@ export function useVoiceChat(config, mouthTarget, emotionTarget) {
             audio.onended = () => {
                 isAISpeaking.current = false;
                 analyserRef.current = null;
-                if (isCallModeActive.current) {
-                    try { recognitionRef.current.start(); } catch (e) { }
-                }
+                if (isCallActive.current) try { recognitionRef.current.start(); } catch (e) { }
             };
             audio.play();
         } catch (err) {
@@ -119,42 +68,87 @@ export function useVoiceChat(config, mouthTarget, emotionTarget) {
             setLoading(false);
             isAISpeaking.current = false;
         }
-    }
+    };
 
-    /**
-     * Speech Recognition (STT) Initialization
-     */
+    const sendMessage = useCallback(async (msg) => {
+        // Prevent double-firing or sending empty messages
+        if (!msg || !msg.trim() || loading || !config) return;
+
+
+        setLoading(true);
+
+        // 1. Create the new history entry locally
+        const userEntry = { role: "user", content: msg }; // Change "User" to "user"
+
+        // 2. Use a functional update to ensure we have the absolute latest state
+        setChatLog(prevLog => {
+            const updatedLog = [...prevLog, userEntry];
+
+            fetch(`${bridgeUrl}/chat`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    // Ensure we are sending the lowercase version
+                    messages: updatedLog.slice(-12).map(m => ({
+                        role: m.role.toLowerCase() === "user" ? "user" : "assistant",
+                        content: m.content
+                    }))
+                })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.choices && data.choices[0]) {
+                        const aiText = data.choices[0].message.content;
+
+                        // Update expressions
+                        emotionTarget.current = {
+                            happy: aiText.includes("[HAPPY]") ? 1 : 0,
+                            relaxed: aiText.includes("[RELAXED]") ? 1 : 0,
+                            surprised: aiText.includes("[SURPRISED]") ? 1 : 0
+                        };
+
+                        if (actionTarget.current) {
+                            actionTarget.current = {
+                                lean: aiText.includes("[ACTION: LEAN]") ? 1 : 0,
+                                blush: aiText.includes("[ACTION: BLUSH]") ? 1 : 0,
+                                nod: aiText.includes("[ACTION: NOD]") ? 1 : 0,
+                                tilt: aiText.includes("[ACTION: TILT]") ? 1 : 0
+                            };
+                            setTimeout(() => {
+                                actionTarget.current = { lean: 0, blush: 0, nod: 0, tilt: 0 };
+                            }, 7000);
+                        }
+
+                        // Speak and show text
+                        speak(aiText, aiText);
+                    }
+                })
+                .catch(err => {
+                    console.error("Chat Error:", err);
+                    setLoading(false);
+                });
+
+            return updatedLog;
+        });
+    }, [config, loading, bridgeUrl, emotionTarget, actionTarget, speak]);
+
     useEffect(() => {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (SpeechRecognition) {
             const rec = new SpeechRecognition();
             rec.lang = "en-US";
-            rec.continuous = false;
-            rec.interimResults = false;
-
             rec.onstart = () => setIsListening(true);
             rec.onend = () => setIsListening(false);
-
-            rec.onresult = (event) => {
-                const transcript = event.results[0][0].transcript;
-                if (transcript) sendMessage(transcript);
-            };
-
+            rec.onresult = (e) => { if (e.results[0][0].transcript) sendMessage(e.results[0][0].transcript); };
             recognitionRef.current = rec;
         }
     }, [sendMessage]);
 
     const toggleCallMode = () => {
-        isCallModeActive.current = !isCallModeActive.current;
-        if (isCallModeActive.current) {
-            recognitionRef.current?.start();
-        } else {
-            recognitionRef.current?.stop();
-        }
+        isCallActive.current = !isCallActive.current;
+        if (isCallActive.current) recognitionRef.current?.start();
+        else recognitionRef.current?.stop();
     };
 
-    return {
-        chatLog, setChatLog, loading, sendMessage,
-        analyserRef, isAISpeaking, isListening, toggleCallMode
-    };
+    return { chatLog, setChatLog, loading, sendMessage, analyserRef, isAISpeaking, isListening, toggleCallMode };
 }
