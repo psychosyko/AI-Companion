@@ -12,7 +12,6 @@ export function useAvatar(mountRef, config) {
     const emotionTarget = useRef({ happy: 0, relaxed: 0, surprised: 0 });
     const emotionCurrent = useRef({ happy: 0, relaxed: 0, surprised: 0 });
     
-    // Actions
     const actionTarget = useRef({ lean: 0, blush: 0, nod: 0, tilt: 0 });
     const actionCurrent = useRef({ lean: 0, blush: 0, nod: 0, tilt: 0 });
 
@@ -23,7 +22,6 @@ export function useAvatar(mountRef, config) {
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(25, window.innerWidth / window.innerHeight, 0.1, 1000);
         
-        // Framing
         if (isMobile) camera.position.set(0, 1.5, 3.5);
         else camera.position.set(0, 1.5, 2.6);
         
@@ -43,53 +41,87 @@ export function useAvatar(mountRef, config) {
 
         const loader = new GLTFLoader();
         loader.register(parser => new VRMLoaderPlugin(parser));
-        const vrmPath = config.vrm.startsWith('/') ? `.${config.vrm}` : config.vrm;
-
-        loader.load(vrmPath, gltf => {
+        
+        loader.load(`.${config.vrm}`, gltf => {
             const vrm = gltf.userData.vrm;
             vrmRef.current = vrm;
             vrm.scene.rotation.y = Math.PI;
             vrm.lookAt.target = camera;
             scene.add(vrm.scene);
-        }, undefined, (err) => console.error("VRM Load Error:", err));
+        });
 
-        let animationID;
         function animate() {
-            animationID = requestAnimationFrame(animate);
+            requestAnimationFrame(animate);
             const delta = 1 / 60;
             const time = performance.now() / 1000;
             const vrm = vrmRef.current;
 
             if (vrm) {
-                // Get bone nodes safely
-                const spine = vrm.humanoid.getNormalizedBoneNode("spine");
-                const neck = vrm.humanoid.getNormalizedBoneNode("neck");
-                const leftArm = vrm.humanoid.getNormalizedBoneNode("leftUpperArm");
-                const rightArm = vrm.humanoid.getNormalizedBoneNode("rightUpperArm");
+                // --- BONE ACCESS ---
+                const s = vrm.humanoid.getNormalizedBoneNode("spine");
+                const n = vrm.humanoid.getNormalizedBoneNode("neck");
+                const lUA = vrm.humanoid.getNormalizedBoneNode("leftUpperArm");
+                const rUA = vrm.humanoid.getNormalizedBoneNode("rightUpperArm");
+                const lLA = vrm.humanoid.getNormalizedBoneNode("leftLowerArm"); 
+                const rLA = vrm.humanoid.getNormalizedBoneNode("rightLowerArm"); 
+                const lH = vrm.humanoid.getNormalizedBoneNode("leftHand"); 
+                const rH = vrm.humanoid.getNormalizedBoneNode("rightHand"); 
 
-                // 1. Smoothly interpolate action values
+                // Lerp Actions
                 Object.keys(actionTarget.current).forEach(key => {
                     actionCurrent.current[key] += (actionTarget.current[key] - actionCurrent.current[key]) * 0.05;
                 });
 
-                // 2. Apply Bone Rotations
-                if (spine) {
+                // --- 1. NATURAL ARMS & ELBOWS ---
+                if (lUA && rUA && lLA && rLA) {
+                    const lSway = Math.sin(time * 0.6) * 0.03;
+                    const rSway = Math.sin(time * 0.7 + 0.5) * 0.03;
+
+                    // Shoulders: A-Pose
+                    lUA.rotation.z = 1.3 + lSway;
+                    rUA.rotation.z = -1.3 - rSway;
+
+                    // ELBOWS: Fix backward bend
+                    // Change the 0.4 to -0.4 if they still bend the wrong way
+                    lLA.rotation.x = -0.4; 
+                    rLA.rotation.x = -0.4;
+                    lLA.rotation.z = -0.1; // Keep them close to body
+                    rLA.rotation.z = 0.1;
+                    
+                    // Hands/Wrists: Subtle dangles
+                    if (lH && rH) {
+                        lH.rotation.x = 0.2 + Math.sin(time * 0.6) * 0.05;
+                        rH.rotation.x = 0.2 + Math.sin(time * 0.7) * 0.05;
+                    }
+
+                    // --- 2. PROCEDURAL FINGERS (The Relaxed Curl) ---
+                    const fingerBones = ["Thumb", "Index", "Middle", "Ring", "Little"];
+                    const phalanges = ["Proximal", "Intermediate", "Distal"];
+                    
+                    fingerBones.forEach(f => {
+                        phalanges.forEach(p => {
+                            const leftF = vrm.humanoid.getNormalizedBoneNode(`left${f}${p}`);
+                            const rightF = vrm.humanoid.getNormalizedBoneNode(`right${f}${p}`);
+                            
+                            // A value of 0.2-0.3 creates a natural curve
+                            // We add a tiny "jitter" to make them look like they are alive
+                            const curl = 0.25 + (Math.sin(time * 2 + (f.length)) * 0.02);
+
+                            if (leftF) leftF.rotation.z = curl;
+                            if (rightF) rightF.rotation.z = -curl;
+                        });
+                    });
+                }
+
+                // 3. SPINE & NECK
+                if (s) {
                     const breathing = Math.sin(time * 1.5) * 0.04;
-                    const leanAmount = actionCurrent.current.lean * 0.25;
-                    spine.rotation.x = breathing + leanAmount;
+                    s.rotation.x = breathing + (actionCurrent.current.lean * 0.25);
                 }
 
-                if (neck) {
-                    const nodEffect = Math.sin(time * 10) * 0.1 * actionCurrent.current.nod;
-                    const tiltEffect = 0.3 * actionCurrent.current.tilt;
-                    neck.rotation.x = nodEffect;
-                    neck.rotation.z = tiltEffect;
-                }
-
-                if (leftArm && rightArm) {
-                    const sway = Math.sin(time * 0.8) * 0.05;
-                    leftArm.rotation.z = 1.2 + sway;
-                    rightArm.rotation.z = -1.2 - sway;
+                if (n) {
+                    n.rotation.x = Math.sin(time * 10) * 0.1 * actionCurrent.current.nod;
+                    n.rotation.z = 0.3 * actionCurrent.current.tilt;
                 }
 
                 updateExpressions(vrm, delta);
@@ -100,7 +132,6 @@ export function useAvatar(mountRef, config) {
         }
 
         function updateExpressions(vrm, delta) {
-            // Blinking
             blinkState.current.timer += delta;
             if (!blinkState.current.blinking && blinkState.current.timer > 3.5) {
                 blinkState.current.blinking = true;
@@ -114,14 +145,10 @@ export function useAvatar(mountRef, config) {
                     vrm.expressionManager.setValue("blink", 0);
                 }
             }
-
-            // Lip Sync
             ["aa", "oh", "ih"].forEach(v => {
                 mouthCurrent.current[v] += (mouthTarget.current[v] - mouthCurrent.current[v]) * 0.25;
                 vrm.expressionManager.setValue(v, mouthCurrent.current[v]);
             });
-
-            // Emotions & Blush
             ["happy", "relaxed", "surprised"].forEach(e => {
                 emotionCurrent.current[e] += (emotionTarget.current[e] - emotionCurrent.current[e]) * 0.05;
                 let val = emotionCurrent.current[e];
@@ -129,7 +156,6 @@ export function useAvatar(mountRef, config) {
                 if (e === "happy") val = Math.min(val, 0.35); 
                 vrm.expressionManager.setValue(e, val);
             });
-
             vrm.expressionManager.update(delta);
             vrm.update(delta);
         }
