@@ -62,30 +62,34 @@ app.post("/chat", async (req, res) => {
         const memory = loadJson(MEMORY_PATH);
         const history = req.body.messages;
 
-        const systemPrompt = `
-        ${config.character.personality_prompt}
-
-        ### USER CONTEXT
-        - You are talking to ${config.character.user_name}.
-        - Things you remember about them:
-        ${memory.length > 0 ? memory.map(m => "- " + m).join("\n") : "Nothing yet."}
-
-        ### LONG-TERM MEMORY INSTRUCTION
-        If the user shares personal details, save them using: [MEMORY: specific fact]
+        // 1. Define the "Engine Rules" (Mandatory technical instructions)
+        const engineRules = `
+# MANDATORY ENGINE RULES (Do not ignore):
+- You MUST start every single response with exactly one emotion tag: [NEUTRAL], [HAPPY], [RELAXED], or [SURPRISED].
+- You can move your body by adding action tags at the end of your message: [ACTION: LEAN], [ACTION: BLUSH], [ACTION: NOD], [ACTION: TILT].
+- If the user shares a personal detail (likes, job, habits), you MUST save it using: [MEMORY: fact].
+- NEVER use asterisks (*) for actions. Use the [ACTION: ] tags only.
+- Speak casually and use the user's preferred name: ${config.character.user_name}.
         `;
+
+        // 2. Format the Memory list
+        const memoryContext = memory.length > 0 
+            ? `\n# THINGS YOU REMEMBER ABOUT THE USER:\n${memory.map(m => "- " + m).join("\n")}`
+            : "";
+
+        // 3. Combine everything: Character Vibe + Engine Rules + Memory
+        const finalSystemPrompt = `${config.character.personality_prompt}\n\n${engineRules}${memoryContext}`;
 
         const response = await fetch("https://api.openai.com/v1/chat/completions", {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
+            headers: { 
+                "Content-Type": "application/json", 
+                "Authorization": `Bearer ${process.env.OPENAI_API_KEY}` 
             },
             body: JSON.stringify({
                 model: "gpt-4o-mini",
                 messages: [
-                    { role: "system", content: systemPrompt },
-                    // This line fixes the error by forcing roles to lowercase 
-                    // and mapping 'Nazuna' or 'Assistant' to 'assistant'
+                    { role: "system", content: finalSystemPrompt },
                     ...history.map(m => ({
                         role: m.role.toLowerCase() === "user" ? "user" : "assistant",
                         content: m.content
@@ -96,39 +100,34 @@ app.post("/chat", async (req, res) => {
         });
 
         const data = await response.json();
-
-        // --- NEW SAFETY CHECK ---
-        if (!data.choices || data.choices.length === 0) {
-            console.error("❌ OpenAI API Error:", data.error || data);
-            return res.status(500).json({ error: "AI returned an empty response or error." });
+        if (!data.choices) {
+            console.error("OpenAI Error:", data);
+            return res.status(500).send("AI failed");
         }
 
         let aiText = data.choices[0].message.content;
 
-        // Extract and save memory
+        // --- Tag Extraction Logic ---
         const memoryMatch = aiText.match(/\[MEMORY:\s*(.*?)\]/i);
         if (memoryMatch) {
             const newFact = memoryMatch[1].trim();
             const currentMemory = loadJson(MEMORY_PATH);
-            const alreadyExists = currentMemory.some(m => m.toLowerCase() === newFact.toLowerCase());
-
-            if (!alreadyExists) {
+            if (!currentMemory.some(m => m.toLowerCase() === newFact.toLowerCase())) {
                 currentMemory.push(newFact);
                 saveJson(MEMORY_PATH, currentMemory);
-                console.log(`✨ Memory Updated: ${newFact}`);
+                console.log(`✨ Learned: ${newFact}`);
             }
             aiText = aiText.replace(/\[MEMORY:.*?\]/gi, "").trim();
             data.choices[0].message.content = aiText;
         }
 
-        // Save history
         const fullHistory = [...history, { role: "assistant", content: aiText }];
         saveJson(HISTORY_PATH, fullHistory.slice(-50));
 
         res.json(data);
     } catch (err) {
-        console.error("Server Logic Error:", err);
-        res.status(500).json({ error: "Internal server error" });
+        console.error("Server Error:", err);
+        res.status(500).send("Internal Server Error");
     }
 });
 
