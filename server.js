@@ -2,10 +2,9 @@ import express from "express";
 import fetch from "node-fetch";
 import cors from "cors";
 import fs from "fs";
-import dotenv from "dotenv"; // 1. Import dotenv
+import dotenv from "dotenv";
 
-dotenv.config(); // 2. Load the .env file
-
+dotenv.config();
 const app = express();
 app.use(express.json());
 
@@ -13,35 +12,18 @@ const CONFIG_PATH = './config.json';
 const MEMORY_PATH = './memory.json';
 const HISTORY_PATH = './chat_history.json';
 
-// Helper to ensure a file exists and is valid JSON
 const ensureJsonFile = (path) => {
     if (!fs.existsSync(path) || fs.readFileSync(path, 'utf-8').trim() === "") {
         fs.writeFileSync(path, JSON.stringify([]));
-        console.log(`Initialized empty file: ${path}`);
     }
 };
+ensureJsonFile(MEMORY_PATH);
+ensureJsonFile(HISTORY_PATH);
 
-// --- INITIALIZE FILES ON STARTUP ---
-try {
-    ensureJsonFile(MEMORY_PATH);
-    ensureJsonFile(HISTORY_PATH);
-} catch (e) {
-    console.error("File initialization failed:", e);
-}
-
-const loadJson = (path) => {
-    try {
-        return JSON.parse(fs.readFileSync(path, 'utf-8'));
-    } catch (e) {
-        console.error(`Error parsing ${path}, resetting to empty array.`);
-        return [];
-    }
-};
-
+const loadJson = (path) => JSON.parse(fs.readFileSync(path, 'utf-8'));
 const saveJson = (path, data) => fs.writeFileSync(path, JSON.stringify(data, null, 2));
 
-// Load main config
-const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
+const config = loadJson(CONFIG_PATH);
 app.use(cors({ origin: config.server_settings.frontend_url }));
 
 app.get("/config", (req, res) => {
@@ -62,22 +44,19 @@ app.post("/chat", async (req, res) => {
         const memory = loadJson(MEMORY_PATH);
         const history = req.body.messages;
 
-        // 1. Define the "Engine Rules" (Mandatory technical instructions)
         const engineRules = `
-# MANDATORY ENGINE RULES (Do not ignore):
-- You MUST start every single response with exactly one emotion tag: [NEUTRAL], [HAPPY], [RELAXED], or [SURPRISED].
+# MANDATORY ENGINE RULES:
+- You MUST start every response with exactly one emotion tag: [NEUTRAL], [HAPPY], [RELAXED], [SURPRISED], or [ANGRY].
 - You can move your body by adding action tags at the end of your message: [ACTION: LEAN], [ACTION: BLUSH], [ACTION: NOD], [ACTION: TILT].
 - If the user shares a personal detail (likes, job, habits), you MUST save it using: [MEMORY: fact].
 - NEVER use asterisks (*) for actions. Use the [ACTION: ] tags only.
 - Speak casually and use the user's preferred name: ${config.character.user_name}.
         `;
 
-        // 2. Format the Memory list
         const memoryContext = memory.length > 0 
             ? `\n# THINGS YOU REMEMBER ABOUT THE USER:\n${memory.map(m => "- " + m).join("\n")}`
             : "";
 
-        // 3. Combine everything: Character Vibe + Engine Rules + Memory
         const finalSystemPrompt = `${config.character.personality_prompt}\n\n${engineRules}${memoryContext}`;
 
         const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -100,14 +79,10 @@ app.post("/chat", async (req, res) => {
         });
 
         const data = await response.json();
-        if (!data.choices) {
-            console.error("OpenAI Error:", data);
-            return res.status(500).send("AI failed");
-        }
+        if (!data.choices) return res.status(500).send("AI Error");
 
         let aiText = data.choices[0].message.content;
 
-        // --- Tag Extraction Logic ---
         const memoryMatch = aiText.match(/\[MEMORY:\s*(.*?)\]/i);
         if (memoryMatch) {
             const newFact = memoryMatch[1].trim();
@@ -115,19 +90,16 @@ app.post("/chat", async (req, res) => {
             if (!currentMemory.some(m => m.toLowerCase() === newFact.toLowerCase())) {
                 currentMemory.push(newFact);
                 saveJson(MEMORY_PATH, currentMemory);
-                console.log(`✨ Learned: ${newFact}`);
             }
             aiText = aiText.replace(/\[MEMORY:.*?\]/gi, "").trim();
             data.choices[0].message.content = aiText;
         }
 
-        const fullHistory = [...history, { role: "assistant", content: aiText }];
-        saveJson(HISTORY_PATH, fullHistory.slice(-50));
-
+        saveJson(HISTORY_PATH, [...history, { role: "assistant", content: aiText }].slice(-50));
         res.json(data);
     } catch (err) {
-        console.error("Server Error:", err);
-        res.status(500).send("Internal Server Error");
+        console.error(err);
+        res.status(500).send("Internal Error");
     }
 });
 
