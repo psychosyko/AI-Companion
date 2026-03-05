@@ -49,3 +49,5 @@ nazuna_*.wav
 dist/
 build/
 repomix-output.xml
+histories/
+memories/

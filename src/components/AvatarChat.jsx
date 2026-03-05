@@ -8,36 +8,47 @@ export default function AvatarChat() {
     const chatEndRef = useRef(null);
     const [config, setConfig] = useState(null);
     const [message, setMessage] = useState("");
+    
+    const [showAdmin, setShowAdmin] = useState(false);
+    const [allUsers, setAllUsers] = useState([]);
+
+    // --- 1. INITIALIZE REFS ONCE HERE ---
+    const mouthTarget = useRef({ aa: 0, oh: 0, ih: 0 });
+    const emotionTarget = useRef({ happy: 0, relaxed: 0, surprised: 0, angry: 0 });
+    const actionTarget = useRef({ lean: 0, blush: 0, nod: 0, tilt: 0 });
 
     const bridgeUrl = `http://${window.location.hostname}:3001`;
 
     useEffect(() => {
-        fetch(`${bridgeUrl}/config`)
-            .then(res => res.json())
-            .then(setConfig)
-            .catch(err => console.error("Bridge unreachable:", err));
+        fetch(`${bridgeUrl}/config`).then(res => res.json()).then(setConfig);
     }, [bridgeUrl]);
 
-    const { mouthTarget, emotionTarget, actionTarget } = useAvatar(mountRef, config);
+    // --- 2. PASS REFS TO BOTH HOOKS ---
     const {
-        chatLog, setChatLog, loading, sendMessage,
+        chatLog, setChatLog, loading, sendMessage, chatState,
         analyserRef, isAISpeaking, isListening, toggleCallMode
     } = useVoiceChat(config, mouthTarget, emotionTarget, actionTarget);
 
-    useEffect(() => {
-        chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }, [chatLog]);
+    useAvatar(mountRef, config, chatState, mouthTarget, emotionTarget, actionTarget);
 
-    // Lip Sync Loop
+    useEffect(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), [chatLog]);
+
+    // --- 3. LIP SYNC LOOP (Updates the shared mouthTarget) ---
     useEffect(() => {
         let frame;
         const loop = () => {
-            if (analyserRef.current && isAISpeaking.current) {
+            if (analyserRef.current && isAISpeaking) {
                 const data = new Uint8Array(analyserRef.current.fftSize);
                 analyserRef.current.getByteTimeDomainData(data);
-                let sum = 0;
-                for (let i = 0; i < data.length; i++) sum += Math.abs(data[i] - 128);
-                mouthTarget.current.aa = Math.min((sum / data.length) / 2, 0.7);
+                
+                let sumSq = 0;
+                for (let i = 0; i < data.length; i++) {
+                    const amp = (data[i] - 128) / 128;
+                    sumSq += amp * amp;
+                }
+                const volume = Math.sqrt(sumSq / data.length);
+                // Adjust 12.0 to make her mouth open wider or narrower
+                mouthTarget.current.aa = Math.min(volume * 12.0, 0.8);
             } else {
                 mouthTarget.current.aa = 0;
             }
@@ -45,7 +56,7 @@ export default function AvatarChat() {
         };
         loop();
         return () => cancelAnimationFrame(frame);
-    }, [analyserRef, isAISpeaking, mouthTarget]);
+    }, [isAISpeaking, analyserRef]);
 
     const handleSend = () => {
         if (!message.trim()) return;
@@ -53,73 +64,61 @@ export default function AvatarChat() {
         setMessage("");
     };
 
-    const clearHistory = async () => {
-        if (window.confirm("Reset Nazuna's memory and chat history?")) {
-            const res = await fetch(`${bridgeUrl}/reset`, { method: "POST" });
-            if (res.ok) setChatLog([]);
-        }
-    };
-
-    if (!config) return <div className="avatar-container"><p style={{ color: 'white', padding: '40px' }}>Waking up the vampire...</p></div>;
+    if (!config) return <div className="avatar-container"><p style={{color:'white', padding:'40px'}}>Waking up the vampire...</p></div>;
 
     return (
         <div className="avatar-container">
             <div ref={mountRef} className="avatar-canvas" />
 
+            {showAdmin && (
+                <div className="admin-panel">
+                    <div className="admin-header">
+                        <h3>Vampire Records</h3>
+                        <button className="admin-close" onClick={() => setShowAdmin(false)}>✕</button>
+                    </div>
+                    <div className="user-list">
+                        {allUsers.map(u => (
+                            <div key={u.id} className="user-item">
+                                <div className="user-info">
+                                    <span className="u-name">{u.name}</span>
+                                    <span className="u-id">{u.id === config.discord_boss_id ? "BOSS" : u.id}</span>
+                                </div>
+                                <div className="user-actions">
+                                    <button onClick={async () => { if(window.confirm('Wipe chat?')) { await fetch(`${bridgeUrl}/admin/delete`, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({id:u.id, type:'history'})}); fetch(`${bridgeUrl}/admin/users`).then(r=>r.json()).then(setAllUsers); if(u.id === config.discord_boss_id) setChatLog([]); }}}>Chat</button>
+                                    <button onClick={async () => { if(window.confirm('Wipe facts?')) { await fetch(`${bridgeUrl}/admin/delete`, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({id:u.id, type:'memory'})}); fetch(`${bridgeUrl}/admin/users`).then(r=>r.json()).then(setAllUsers); }}}>Facts</button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             <div className="phone-frame">
                 <div className="chat-header">
                     <div className="status-dot" />
                     <span className="header-title">Nazuna Nanakusa</span>
-                    <button onClick={clearHistory} className="clear-btn">Reset</button>
+                    <button onClick={() => { setShowAdmin(true); fetch(`${bridgeUrl}/admin/users`).then(r=>r.json()).then(setAllUsers); }} className="admin-btn">⚙</button>
                 </div>
 
                 <div className="message-area">
-                    {chatLog.map((c, i) => {
-                        const isUser = c.role.toLowerCase() === "user";
-                        return (
-                            <div key={i} className={isUser ? "user-row" : "ai-row"}>
-                                <div className={isUser ? "user-bubble" : "ai-bubble"}>
-                                    {c.content.replace(/\[.*?\]/g, "").trim()}
-                                </div>
+                    {chatLog.map((c, i) => (
+                        <div key={i} className={c.role.toLowerCase() === "user" ? "user-row" : "ai-row"}>
+                            <div className={c.role.toLowerCase() === "user" ? "user-bubble" : "ai-bubble"}>
+                                {c.content.replace(/\[.*?\]/g, "").trim()}
                             </div>
-                        );
-                    })}
+                        </div>
+                    ))}
                     {loading && <div className="loading-text">thinking...</div>}
                     <div ref={chatEndRef} />
                 </div>
 
                 <div className="input-area">
-                    {/* Call Toggle Button */}
-                    <button
-                        onClick={(e) => toggleCallMode(e)}
-                        className={`icon-btn ${isListening ? 'active' : ''}`}
-                    >
-                        {isListening ? (
-                            // HANG UP ICON SVG
-                            <svg width="34" height="34" viewBox="0 0 24 24" fill="white">
-                                <path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08a.994.994 0 010-1.41C2.75 9.21 6.92 7 12 7s9.25 2.21 11.71 4.67c.39.39.39 1.02 0 1.41l-2.48 2.48c-.18.18-.43.29-.71.29s-.53-.11-.7-.28c-.79-.74-1.69-1.36-2.67-1.85-.33-.16-.56-.5-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z" />
-                            </svg>
-                        ) : (
-                            // MIC ICON SVG
-                            <svg width="34" height="34" viewBox="0 0 24 24" fill="white">
-                                <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" />
-                                <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
-                            </svg>
-                        )}
+                    <button onClick={(e) => toggleCallMode(e)} className={`icon-btn ${isListening ? 'active' : ''}`}>
+                        <svg viewBox="0 0 24 24" fill="white"><path d={isListening ? "M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08a.994.994 0 010-1.41C2.75 9.21 6.92 7 12 7s9.25 2.21 11.71 4.67c.39.39.39 1.02 0 1.41l-2.48 2.48c-.18.18-.43.29-.71.29s-.53-.11-.7-.28c-.79-.74-1.69-1.36-2.67-1.85-.33-.16-.56-.5-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z" : "M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"} /></svg>
                     </button>
-
-                    <input
-                        className="chat-input"
-                        value={message}
-                        onChange={e => setMessage(e.target.value)}
-                        placeholder={isListening ? "Listening..." : "Message..."}
-                        onKeyDown={e => e.key === "Enter" && handleSend()}
-                    />
-
+                    <input className="chat-input" value={message} onChange={e => setMessage(e.target.value)} placeholder={isListening ? "Listening..." : "Message..."} onKeyDown={e => {if(e.key==="Enter") handleSend()}} />
                     <button onClick={handleSend} disabled={loading} className="send-btn">
-                        <svg viewBox="0 0 24 24">
-                            <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
-                        </svg>
+                        <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" /></svg>
                     </button>
                 </div>
             </div>

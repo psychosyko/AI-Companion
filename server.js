@@ -10,76 +10,55 @@ dotenv.config();
 const app = express();
 app.use(express.json());
 
-// --- DIRECTORY SETUP ---
 const CONFIG_PATH = './config.json';
 const HISTORIES_DIR = './histories';
-const MEMORIES_DIR = './memories'; // New directory for individual profiles
+const MEMORIES_DIR = './memories';
 
 if (!fs.existsSync(HISTORIES_DIR)) fs.mkdirSync(HISTORIES_DIR);
 if (!fs.existsSync(MEMORIES_DIR)) fs.mkdirSync(MEMORIES_DIR);
 
-const loadJson = (path) => JSON.parse(fs.readFileSync(path, 'utf-8'));
-const saveJson = (path, data) => fs.writeFileSync(path, JSON.stringify(data, null, 2));
+const loadJson = (p) => JSON.parse(fs.readFileSync(p, 'utf-8'));
+const saveJson = (p, d) => fs.writeFileSync(p, JSON.stringify(d, null, 2));
 
-// --- DYNAMIC PATH HELPERS ---
 const getHistoryPath = (id) => path.join(HISTORIES_DIR, `${id}.json`);
 const getMemoryPath = (id) => path.join(MEMORIES_DIR, `${id}.json`);
 
-const loadUserHistory = (id) => {
-    const p = getHistoryPath(id);
-    return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf-8')) : [];
-};
-
-const loadUserMemory = (id, defaultName = "Unknown") => {
-    const p = getMemoryPath(id);
-    return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf-8')) : { name: defaultName, facts: [] };
-};
+const loadUserHistory = (id) => fs.existsSync(getHistoryPath(id)) ? loadJson(getHistoryPath(id)) : [];
+const loadUserMemory = (id, def) => fs.existsSync(getMemoryPath(id)) ? loadJson(getMemoryPath(id)) : { name: def, facts: [] };
 
 const config = loadJson(CONFIG_PATH);
 app.use(cors({ origin: config.server_settings.frontend_url }));
 
-const discordClient = new Client({
-    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
-});
+const discordClient = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
 
-/**
- * FINAL AI LOGIC ENGINE
- * Pulls from individual History and Memory files
- */
 async function getNazunaResponse(userMessages, senderName, senderId) {
     const bossId = config.character.discord_boss_id;
     const bossName = config.character.user_name;
     const isBoss = (senderId === bossId);
 
-    // 1. Load this specific user's context
     const history = loadUserHistory(senderId);
     const memory = loadUserMemory(senderId, senderName);
-
-    // 2. Load Boss context (for gossip/reference)
     const bossMemory = isBoss ? memory : loadUserMemory(bossId, bossName);
 
     const now = new Date();
     const currentTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
     const engineRules = `
-# MANDATORY OUTPUT FORMAT (CRITICAL):
-1. START your response with an emotion tag: [NEUTRAL], [HAPPY], [RELAXED], [SURPRISED], [ANGRY], or [SAD].
-2. END your response with action tags: [ACTION: LEAN], [ACTION: BLUSH], [ACTION: NOD], or [ACTION: TILT].
-3. IF you learn a personal fact (likes, job, habits, owner of something), you MUST add [MEMORY: fact] at the VERY end. 
+### CRITICAL OUTPUT INSTRUCTIONS:
+1. Every response MUST start with an emotion tag: [NEUTRAL], [HAPPY], [RELAXED], [SURPRISED],[ANGRY], or [SAD].
+2. Every response MUST end with an action tag:[ACTION: LEAN], [ACTION: BLUSH], [ACTION: NOD], or [ACTION: TILT].
+3. **OBSERVATIONAL LEARNING (MANDATORY):** If ${senderName} mentions a preference, a person they like, a hobby, a job, or an event, you MUST append [MEMORY: specific fact] at the absolute end of your message.
+   - Example user says: "I like coffee." -> You reply: "... [ACTION: TILT][MEMORY: likes coffee]"
+   - Example user says: "I'm a coder." -> You reply: "... [ACTION: NOD] [MEMORY: works as a coder]"
 
-# CURRENT CONTEXT:
-- You are talking to: ${senderName}.
-${isBoss ? "- This is Psycho (Boss). Be intimate." : `- ${bossName} is your Boss.`}
-- Time: ${currentTime}.
+### CONTEXT:
+- Talking to: ${senderName}. ${isBoss ? "(This is your Boss/Partner, Psycho)" : ""}
+- Current Time: ${currentTime}.
 
-# MEMORIES OF ${senderName.toUpperCase()}:
-${memory.facts.length > 0 ? memory.facts.join(", ") : "None yet. ASK or LISTEN for details."}
-
-# EXAMPLE OF PROPER TAGGING:
-"Oh, you have a bike? I'll remember that. [HAPPY] [ACTION: LEAN] [MEMORY: owns a motorcycle]"
+### PERMANENT RECORDS FOR ${senderName.toUpperCase()}:
+${memory.facts.length > 0 ? memory.facts.join(", ") : "None yet. Learn about them!"}
     `;
 
-    // 3. Request from OpenAI
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.OPENAI_API_KEY}` },
@@ -97,29 +76,24 @@ ${memory.facts.length > 0 ? memory.facts.join(", ") : "None yet. ASK or LISTEN f
     const data = await response.json();
     let aiText = data.choices[0].message.content;
 
-    // 4. Update Memory File if tag found
     const memoryMatch = aiText.match(/\[MEMORY:\s*(.*?)\]/i);
     if (memoryMatch) {
-        const newFact = memoryMatch[1].trim();
-        // Remove trailing bracket if regex caught it
-        const cleanFact = newFact.replace(/\]$/, '');
+        const newFact = memoryMatch[1].trim().replace(/\]$/, '');
 
-        if (!memory.facts.some(f => f.toLowerCase() === cleanFact.toLowerCase())) {
-            memory.facts.push(cleanFact);
-            saveJson(getMemoryPath(senderId), memory);
-            console.log(`✨ Nazuna's notebook updated for ${senderName}: ${cleanFact}`);
+        const currentMemory = loadUserMemory(senderId, senderName);
+        const alreadyKnown = currentMemory.facts.some(f => f.toLowerCase() === newFact.toLowerCase());
+
+        if (!alreadyKnown) {
+            currentMemory.facts.push(newFact);
+            saveJson(getMemoryPath(senderId), currentMemory);
+            console.log(`✨ Memory Logged for ${senderName}: ${newFact}`);
         }
-        // Remove the tag from the spoken/displayed text
+
         aiText = aiText.replace(/\[MEMORY:.*?\]/gi, "").trim();
+        data.choices[0].message.content = aiText;
     }
 
-    // 5. Save History File
-    const updatedHistory = [...history,
-    { role: "user", content: userMessages[userMessages.length - 1].content },
-    { role: "assistant", content: aiText, timestamp: now.toISOString() }
-    ];
-    saveJson(getHistoryPath(senderId), updatedHistory.slice(-100));
-
+    saveJson(getHistoryPath(senderId), [...history, { role: "user", content: userMessages[0].content }, { role: "assistant", content: aiText, timestamp: now.toISOString() }].slice(-100));
     return aiText;
 }
 
@@ -129,47 +103,46 @@ discordClient.on('messageCreate', async (message) => {
     const isDM = message.guild === null;
     const isMentioned = message.mentions.has(discordClient.user.id);
     if (!isDM && !isMentioned) return;
-
     try {
         message.channel.sendTyping();
-        const senderId = message.author.id;
-        const senderName = message.member?.displayName || message.author.username;
-        const cleanContent = message.content.replace(/<@!?\d+>/g, '').trim();
-
-        const responseText = await getNazunaResponse([{ role: "user", content: cleanContent }], senderName, senderId);
+        const responseText = await getNazunaResponse([{ role: "user", content: message.content.replace(/<@!?\d+>/g, '').trim() }], message.member?.displayName || message.author.username, message.author.id);
         await message.reply(responseText.replace(/\[ACTION:.*?\]/gi, "").trim());
     } catch (err) { console.error(err); }
 });
 
-// --- WEB APP API ---
-app.get("/config", (req, res) => {
-    const bossId = config.character.discord_boss_id;
-    res.json({
-        prompt: config.character.personality_prompt,
-        vrm: config.character.vrm_path,
-        user_name: config.character.user_name,
-        history: loadUserHistory(bossId)
+// --- ADMIN API ---
+app.get("/admin/users", (req, res) => {
+    const users = fs.readdirSync(MEMORIES_DIR).map(f => {
+        const id = f.replace('.json', '');
+        const data = JSON.parse(fs.readFileSync(path.join(MEMORIES_DIR, f)));
+        return { id, name: data.name };
     });
+    res.json(users);
+});
+
+app.post("/admin/delete", (req, res) => {
+    const { id, type } = req.body;
+    if (type === 'history' || type === 'both') {
+        const p = getHistoryPath(id);
+        if (fs.existsSync(p)) fs.unlinkSync(p);
+    }
+    if (type === 'memory' || type === 'both') {
+        const p = getMemoryPath(id);
+        if (fs.existsSync(p)) fs.unlinkSync(p);
+    }
+    res.json({ success: true });
+});
+
+// --- REST API ---
+app.get("/config", (req, res) => {
+    res.json({ prompt: config.character.personality_prompt, vrm: config.character.vrm_path, user_name: config.character.user_name, history: loadUserHistory(config.character.discord_boss_id) });
 });
 
 app.post("/chat", async (req, res) => {
     try {
-        const responseText = await getNazunaResponse(
-            req.body.messages.slice(-1),
-            config.character.user_name,
-            config.character.discord_boss_id
-        );
+        const responseText = await getNazunaResponse(req.body.messages.slice(-1), config.character.user_name, config.character.discord_boss_id);
         res.json({ choices: [{ message: { content: responseText } }] });
     } catch (err) { res.status(500).send("AI Error"); }
-});
-
-app.post("/reset", (req, res) => {
-    const bossId = config.character.discord_boss_id;
-    const hPath = getHistoryPath(bossId);
-    const mPath = getMemoryPath(bossId);
-    if (fs.existsSync(hPath)) fs.unlinkSync(hPath);
-    if (fs.existsSync(mPath)) fs.unlinkSync(mPath);
-    res.json({ success: true });
 });
 
 app.post("/tts", async (req, res) => {
@@ -179,10 +152,14 @@ app.post("/tts", async (req, res) => {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ text: req.body.text.replace(/\[.*?\]/g, "").trim() })
         });
+
+        const arrayBuffer = await response.arrayBuffer();
+
+        // --- ADD THESE TO ALLOW LIP SYNC ---
+        res.setHeader("Access-Control-Allow-Origin", "*");
         res.setHeader("Content-Type", "audio/wav");
-        res.send(Buffer.from(await response.arrayBuffer()));
+        res.send(Buffer.from(arrayBuffer));
     } catch (err) { res.status(500).send(err); }
 });
-
 discordClient.login(process.env.DISCORD_TOKEN);
-app.listen(config.server_settings.bridge_port, () => console.log("✅ Modular AI Agent Active"));
+app.listen(config.server_settings.bridge_port, () => console.log("✅ Bridge & Admin Active"));

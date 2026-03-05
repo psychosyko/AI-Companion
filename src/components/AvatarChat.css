@@ -1,224 +1,82 @@
-/* --- Variables --- */
+/* --- Variables & Core --- */
 :root {
     --nazuna-pink: #ff69b4;
     --nazuna-purple: #1a0b2e;
-    /* Transparency for the main frame */
     --glass-bg: rgba(15, 10, 25, 0.4); 
 }
 
-/* --- Global Reset --- */
 html, body {
-    overflow: hidden;
-    margin: 0;
-    padding: 0;
-    width: 100%;
-    height: 100%;
-    overscroll-behavior: none;
-    background-color: black;
+    overflow: hidden; margin: 0; padding: 0; width: 100%; height: 100%;
+    overscroll-behavior: none; background-color: black;
 }
 
 .avatar-container {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
+    position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
     background: radial-gradient(circle at center, var(--nazuna-purple) 0%, #000000 100%);
-    overflow: hidden;
-    font-family: 'Segoe UI', Roboto, sans-serif;
+    overflow: hidden; font-family: 'Segoe UI', Roboto, sans-serif;
 }
 
-.avatar-canvas {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100vh;
-    z-index: 1;
+.avatar-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100vh; z-index: 1; }
+
+/* --- Admin Panel --- */
+.admin-panel {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 90%; max-width: 450px; background: rgba(15, 10, 25, 0.95);
+    backdrop-filter: blur(20px); border: 1px solid var(--nazuna-pink);
+    border-radius: 20px; z-index: 100; padding: 20px;
+    box-shadow: 0 0 50px rgba(255, 105, 180, 0.2); color: white;
 }
 
-/* --- Desktop Phone Frame (Glass Style) --- */
+.admin-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255, 255, 255, 0.1); margin-bottom: 15px; padding-bottom: 10px; }
+.admin-header h3 { color: var(--nazuna-pink); margin: 0; }
+.admin-close { background: transparent; border: none; color: white; font-size: 1.2rem; cursor: pointer; }
+
+.user-list { max-height: 300px; overflow-y: auto; }
+.user-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
+.user-info { display: flex; flex-direction: column; }
+.u-name { font-weight: bold; font-size: 0.9rem; }
+.u-id { color: #666; font-size: 0.7rem; }
+.user-actions { display: flex; gap: 5px; }
+.user-actions button { background: rgba(255, 105, 180, 0.1); border: 1px solid var(--nazuna-pink); color: var(--nazuna-pink); font-size: 0.65rem; padding: 5px; border-radius: 4px; cursor: pointer; transition: 0.2s; }
+.user-actions button:hover { background: var(--nazuna-pink); color: white; }
+
+/* --- Phone UI Frame --- */
 .phone-frame {
-    position: absolute;
-    bottom: 30px;
-    right: 30px;
-    width: 380px;
-    height: 580px;
-    background: var(--glass-bg);
-    /* Frosted glass effect: re-enabled but subtle */
-    backdrop-filter: blur(10px); 
-    border-radius: 28px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    display: flex;
-    flex-direction: column;
-    z-index: 10;
-    box-shadow: 0 15px 40px rgba(0, 0, 0, 0.5);
-    overflow: hidden;
-    transition: all 0.3s ease;
+    position: absolute; bottom: 30px; right: 30px; width: 380px; height: 580px;
+    background: var(--glass-bg); backdrop-filter: blur(10px); border-radius: 28px;
+    border: 1px solid rgba(255, 255, 255, 0.1); display: flex; flex-direction: column;
+    z-index: 10; box-shadow: 0 15px 40px rgba(0, 0, 0, 0.5); overflow: hidden;
 }
 
-/* --- Message Bubbles (More Opaque as requested) --- */
-.user-bubble { 
-    /* High opacity pink so it pops */
-    background: rgba(255, 105, 180, 0.9); 
-    color: white; 
-    padding: 10px 14px; 
-    border-radius: 18px 18px 4px 18px; 
-    font-size: 0.9rem; 
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-}
+.chat-header { padding: 12px 18px; display: flex; align-items: center; gap: 10px; background: rgba(0, 0, 0, 0.3); border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
+.status-dot { width: 8px; height: 8px; background: #00ffa3; border-radius: 50%; box-shadow: 0 0 8px #00ffa3; }
+.header-title { color: white; font-size: 0.9rem; font-weight: 600; flex: 1; }
+.admin-btn { background: transparent; border: none; color: var(--nazuna-pink); font-size: 1.2rem; cursor: pointer; opacity: 0.8; transition: 0.2s; }
+.admin-btn:hover { opacity: 1; transform: rotate(45deg); }
 
-.ai-bubble { 
-    /* Opaque dark purple so text is clear against Nazuna */
-    background: rgba(40, 30, 60, 0.8); 
-    backdrop-filter: blur(5px);
-    color: #f0f0ff; 
-    padding: 10px 14px; 
-    border-radius: 18px 18px 18px 4px; 
-    font-size: 0.9rem; 
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-}
+/* --- Bubbles --- */
+.user-bubble { background: rgba(255, 105, 180, 0.9); color: white; padding: 10px 14px; border-radius: 18px 18px 4px 18px; font-size: 0.9rem; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+.ai-bubble { background: rgba(40, 30, 60, 0.8); backdrop-filter: blur(5px); color: #f0f0ff; padding: 10px 14px; border-radius: 18px 18px 18px 4px; font-size: 0.9rem; border: 1px solid rgba(255, 255, 255, 0.1); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
 
-/* --- Buttons & Icons --- */
-.icon-btn, .send-btn {
-    width: 44px;
-    height: 44px;
-    min-width: 44px;
-    border-radius: 50%;
-    border: none;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.2s ease;
-    flex-shrink: 0;
-    padding: 0;
-}
-
+/* --- Input --- */
+.input-area { padding: 12px 18px; display: flex; align-items: center; gap: 10px; background: rgba(0, 0, 0, 0.6); border-top: 1px solid rgba(255, 255, 255, 0.05); }
+.chat-input { flex: 1; min-width: 0; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 22px; padding: 10px 16px; color: white; outline: none; font-size: 0.95rem; }
+.icon-btn, .send-btn { width: 44px; height: 44px; min-width: 44px; border-radius: 50%; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease; flex-shrink: 0; padding: 0; }
 .icon-btn { background: rgba(255, 255, 255, 0.15); }
-.icon-btn:hover { background: rgba(255, 255, 255, 0.25); transform: scale(1.05); }
 .icon-btn.active { background: #ff3b30; box-shadow: 0 0 15px rgba(255, 59, 48, 0.4); }
-
 .send-btn { background: transparent; }
-.send-btn:hover { transform: scale(1.1); }
-.send-btn:disabled { opacity: 0.3; }
+.icon-btn svg, .send-btn svg { width: 24px !important; height: 24px !important; }
+.send-btn svg { fill: var(--nazuna-pink); filter: drop-shadow(0 0 8px rgba(255, 105, 180, 0.6)); }
 
-.icon-btn svg, .send-btn svg {
-    width: 24px !important;
-    height: 24px !important;
-}
-
-.send-btn svg {
-    fill: var(--nazuna-pink);
-    filter: drop-shadow(0 0 8px rgba(255, 105, 180, 0.6));
-}
-
-/* --- Input Area --- */
-.input-area {
-    padding: 12px 18px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    background: rgba(0, 0, 0, 0.6); /* Darker for button contrast */
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.chat-input {
-    flex: 1;
-    min-width: 0;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 22px;
-    padding: 10px 16px;
-    color: white;
-    outline: none;
-    font-size: 0.95rem;
-}
-
-/* --- MOBILE UI OVERRIDE (Tuned Transparency) --- */
+/* --- Mobile --- */
 @media (max-width: 768px) {
-    .phone-frame {
-        bottom: 0;
-        right: 0;
-        width: 100%;
-        height: 45vh;
-        border-radius: 20px 20px 0 0;
-        
-        /* Transparent background so you can see her through the chat */
-        background: rgba(10, 5, 20, 0.3); 
-        backdrop-filter: blur(8px); 
-        
-        position: fixed;
-        border: none;
-        border-top: 1px solid rgba(255, 255, 255, 0.1);
-    }
-
-    .icon-btn, .send-btn {
-        width: 48px;
-        height: 48px;
-        min-width: 48px;
-    }
+    .phone-frame { bottom: 0; right: 0; width: 100%; height: 45vh; border-radius: 20px 20px 0 0; background: rgba(10, 5, 20, 0.3); backdrop-filter: blur(8px); position: fixed; border: none; border-top: 1px solid rgba(255, 255, 255, 0.1); }
+    .icon-btn, .send-btn { width: 48px; height: 48px; min-width: 48px; }
 }
 
-/* --- Chat Elements --- */
-.chat-header {
-    padding: 12px 18px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    background: rgba(0, 0, 0, 0.3);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.status-dot {
-    width: 8px;
-    height: 8px;
-    background: #00ffa3;
-    border-radius: 50%;
-    box-shadow: 0 0 8px #00ffa3;
-}
-
-.header-title {
-    color: white;
-    font-size: 0.9rem;
-    font-weight: 600;
-    flex: 1;
-}
-
-.clear-btn {
-    background: transparent;
-    border: 1px solid rgba(255, 105, 180, 0.3);
-    color: var(--nazuna-pink);
-    padding: 3px 8px;
-    border-radius: 4px;
-    font-size: 0.65rem;
-    cursor: pointer;
-}
-
-.message-area {
-    flex: 1;
-    padding: 15px;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    scrollbar-width: none;
-}
+.message-area { flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; scrollbar-width: none; }
 .message-area::-webkit-scrollbar { display: none; }
-
 .user-row { align-self: flex-end; max-width: 85%; }
 .ai-row { align-self: flex-start; max-width: 85%; }
-
-.loading-text {
-    color: var(--nazuna-pink);
-    font-size: 0.8rem;
-    font-style: italic;
-    padding: 5px 15px;
-    animation: pulse 1.5s infinite;
-}
-
-@keyframes pulse {
-    0%, 100% { opacity: 0.4; }
-    50% { opacity: 1; }
-}
+.loading-text { color: var(--nazuna-pink); font-size: 0.8rem; font-style: italic; padding: 5px 15px; animation: pulse 1.5s infinite; }
+@keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }

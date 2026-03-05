@@ -4,18 +4,19 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { VRMLoaderPlugin } from "@pixiv/three-vrm";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
-export function useAvatar(mountRef, config) {
+export function useAvatar(mountRef, config, chatState, mouthTarget, emotionTarget, actionTarget) {
     const vrmRef = useRef(null);
     const blinkState = useRef({ blinking: false, timer: 0 });
-    const mouthTarget = useRef({ aa: 0, oh: 0, ih: 0 });
-    const mouthCurrent = useRef({ aa: 0, oh: 0, ih: 0 });
     
-    // ADDED ANGRY TO REFS
-    const emotionTarget = useRef({ happy: 0, relaxed: 0, surprised: 0, angry: 0 });
+    // Internal 'Current' states for smoothing
+    const mouthCurrent = useRef({ aa: 0, oh: 0, ih: 0 });
+    const headVelocity = useRef({ x: 0, y: 0, z: 0 });
+    const headTarget = useRef({ x: 0, y: 0, z: 0 });
     const emotionCurrent = useRef({ happy: 0, relaxed: 0, surprised: 0, angry: 0 });
-
-    const actionTarget = useRef({ lean: 0, blush: 0, nod: 0, tilt: 0 });
     const actionCurrent = useRef({ lean: 0, blush: 0, nod: 0, tilt: 0 });
+
+    const chatStateRef = useRef(chatState);
+    useEffect(() => { chatStateRef.current = chatState; }, [chatState]);
 
     useEffect(() => {
         if (!config || !mountRef.current) return;
@@ -23,11 +24,10 @@ export function useAvatar(mountRef, config) {
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(25, window.innerWidth / window.innerHeight, 0.1, 1000);
         camera.position.set(0, 1.5, isMobile ? 5.5 : 2.6);
-        
+
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-        mountRef.current.innerHTML = '';
         mountRef.current.appendChild(renderer.domElement);
 
         const controls = new OrbitControls(camera, renderer.domElement);
@@ -54,10 +54,13 @@ export function useAvatar(mountRef, config) {
                 const n = vrm.humanoid.getNormalizedBoneNode("neck");
                 const lUA = vrm.humanoid.getNormalizedBoneNode("leftUpperArm");
                 const rUA = vrm.humanoid.getNormalizedBoneNode("rightUpperArm");
-                const lLA = vrm.humanoid.getNormalizedBoneNode("leftLowerArm"); 
-                const rLA = vrm.humanoid.getNormalizedBoneNode("rightLowerArm"); 
+                const lLA = vrm.humanoid.getNormalizedBoneNode("leftLowerArm");
+                const rLA = vrm.humanoid.getNormalizedBoneNode("rightLowerArm");
 
-                Object.keys(actionTarget.current).forEach(k => actionCurrent.current[k] += (actionTarget.current[k] - actionCurrent.current[k]) * 0.05);
+                // Interpolate actions
+                Object.keys(actionTarget.current).forEach(k => {
+                    actionCurrent.current[k] += (actionTarget.current[k] - actionCurrent.current[k]) * 0.05;
+                });
 
                 if (lUA && rUA && lLA && rLA) {
                     const lSway = Math.sin(time * 0.6) * 0.03;
@@ -67,11 +70,32 @@ export function useAvatar(mountRef, config) {
                 }
 
                 if (s) s.rotation.x = (Math.sin(time * 1.5) * 0.04) + (actionCurrent.current.lean * 0.25);
-                if (n) { n.rotation.x = Math.sin(time * 10) * 0.1 * actionCurrent.current.nod; n.rotation.z = 0.3 * actionCurrent.current.tilt; }
+
+                // --- STATE-BASED PHYSICS HEAD ---
+                if (n) {
+                    const state = chatStateRef.current;
+                    if (state === "listening") headTarget.current = { x: 0.05, y: 0, z: 0.05 }; 
+                    else if (state === "thinking") headTarget.current = { x: -0.15, y: Math.sin(time * 0.5) * 0.3, z: 0 };
+                    else if (state === "talking") headTarget.current = { x: Math.sin(time * 10) * 0.1 * actionCurrent.current.nod, y: 0, z: 0.3 * actionCurrent.current.tilt };
+                    else headTarget.current = { x: Math.sin(time * 0.5) * 0.05, y: Math.cos(time * 0.3) * 0.1, z: 0 };
+
+                    ["x", "y", "z"].forEach(axis => {
+                        const diff = headTarget.current[axis] - n.rotation[axis];
+                        headVelocity.current[axis] = (headVelocity.current[axis] + diff * 0.002) * 0.85;
+                        n.rotation[axis] += headVelocity.current[axis];
+                    });
+                }
+
+                // Fingers
+                ["Thumb", "Index", "Middle", "Ring", "Little"].forEach(f => ["Proximal", "Intermediate", "Distal"].forEach(p => {
+                    const lF = vrm.humanoid.getNormalizedBoneNode(`left${f}${p}`);
+                    const rF = vrm.humanoid.getNormalizedBoneNode(`right${f}${p}`);
+                    if (lF) lF.rotation.z = 0.25 + (Math.sin(time * 2 + f.length) * 0.02);
+                    if (rF) rF.rotation.z = -0.25 - (Math.sin(time * 2 + f.length) * 0.02);
+                }));
 
                 updateExpressions(vrm, delta);
             }
-            controls.update();
             renderer.render(scene, camera);
         }
 
@@ -83,26 +107,29 @@ export function useAvatar(mountRef, config) {
                 vrm.expressionManager.setValue("blink", w);
                 if (blinkState.current.timer > 0.12) { blinkState.current.blinking = false; vrm.expressionManager.setValue("blink", 0); }
             }
+
+            // --- THIS LINE CONNECTS TO PARENT calculation ---
             ["aa", "oh", "ih"].forEach(v => {
                 mouthCurrent.current[v] += (mouthTarget.current[v] - mouthCurrent.current[v]) * 0.25;
                 vrm.expressionManager.setValue(v, mouthCurrent.current[v]);
             });
 
-            // ADDED ANGRY TO THE LOOP
-            ["happy", "relaxed", "surprised", "angry"].forEach(e => {
+            Object.keys(emotionTarget.current).forEach(e => {
+                if (emotionCurrent.current[e] === undefined) emotionCurrent.current[e] = 0;
                 emotionCurrent.current[e] += (emotionTarget.current[e] - emotionCurrent.current[e]) * 0.05;
                 let val = emotionCurrent.current[e];
                 if (e === "surprised") val = Math.max(val, actionCurrent.current.blush * 0.8);
-                if (e === "happy") val = Math.min(val, 0.35); 
+                if (e === "happy") val = Math.min(val, 0.35);
                 vrm.expressionManager.setValue(e, val);
             });
 
             vrm.expressionManager.update(delta);
             vrm.update(delta);
         }
-        animate();
-        return () => renderer.dispose();
-    }, [config, mountRef]);
 
-    return { vrmRef, mouthTarget, emotionTarget, actionTarget };
+        animate();
+        return () => { renderer.dispose(); renderer.forceContextLoss(); };
+    }, [config]);
+
+    return { vrmRef };
 }
