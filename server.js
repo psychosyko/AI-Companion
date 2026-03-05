@@ -42,7 +42,24 @@ app.get("/config", (req, res) => {
 app.post("/chat", async (req, res) => {
     try {
         const memory = loadJson(MEMORY_PATH);
-        const history = req.body.messages;
+        const history = loadJson(HISTORY_PATH); // Load the actual disk history
+        const userMessages = req.body.messages;
+
+        // --- 1. GENERATE TEMPORAL CONTEXT ---
+        const now = new Date();
+        const currentTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const currentDay = now.toLocaleDateString([], { weekday: 'long' });
+
+        // Calculate how long it's been since the last talk
+        let lastSeenContext = "We haven't talked in a while.";
+        if (history.length > 0 && history[history.length - 1].timestamp) {
+            const lastTime = new Date(history[history.length - 1].timestamp);
+            const diffInMinutes = Math.floor((now - lastTime) / 60000);
+
+            if (diffInMinutes < 60) lastSeenContext = `We last talked ${diffInMinutes} minutes ago.`;
+            else if (diffInMinutes < 1440) lastSeenContext = `We last talked ${Math.floor(diffInMinutes / 60)} hours ago.`;
+            else lastSeenContext = `It's been ${Math.floor(diffInMinutes / 1440)} days since we last talked.`;
+        }
 
         const engineRules = `
 # MANDATORY ENGINE RULES:
@@ -50,10 +67,12 @@ app.post("/chat", async (req, res) => {
 - You can move your body by adding action tags at the end of your message: [ACTION: LEAN], [ACTION: BLUSH], [ACTION: NOD], [ACTION: TILT].
 - If the user shares a personal detail (likes, job, habits), you MUST save it using: [MEMORY: fact].
 - NEVER use asterisks (*) for actions. Use the [ACTION: ] tags only.
+- Current Time: ${currentTime} (${currentDay}).
+- Status: ${lastSeenContext}
 - Speak casually and use the user's preferred name: ${config.character.user_name}.
         `;
 
-        const memoryContext = memory.length > 0 
+        const memoryContext = memory.length > 0
             ? `\n# THINGS YOU REMEMBER ABOUT THE USER:\n${memory.map(m => "- " + m).join("\n")}`
             : "";
 
@@ -61,15 +80,15 @@ app.post("/chat", async (req, res) => {
 
         const response = await fetch("https://api.openai.com/v1/chat/completions", {
             method: "POST",
-            headers: { 
-                "Content-Type": "application/json", 
-                "Authorization": `Bearer ${process.env.OPENAI_API_KEY}` 
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
             },
             body: JSON.stringify({
                 model: "gpt-4o-mini",
                 messages: [
                     { role: "system", content: finalSystemPrompt },
-                    ...history.map(m => ({
+                    ...userMessages.map(m => ({
                         role: m.role.toLowerCase() === "user" ? "user" : "assistant",
                         content: m.content
                     }))
@@ -79,8 +98,6 @@ app.post("/chat", async (req, res) => {
         });
 
         const data = await response.json();
-        if (!data.choices) return res.status(500).send("AI Error");
-
         let aiText = data.choices[0].message.content;
 
         const memoryMatch = aiText.match(/\[MEMORY:\s*(.*?)\]/i);
@@ -95,7 +112,15 @@ app.post("/chat", async (req, res) => {
             data.choices[0].message.content = aiText;
         }
 
-        saveJson(HISTORY_PATH, [...history, { role: "assistant", content: aiText }].slice(-50));
+        // --- 2. SAVE HISTORY WITH TIMESTAMPS ---
+        const newHistoryEntry = [
+            ...userMessages.slice(-1), // Just the latest user message
+            { role: "assistant", content: aiText, timestamp: new Date().toISOString() }
+        ];
+
+        // Append to full history and save
+        const updatedHistory = [...history, ...newHistoryEntry];
+        saveJson(HISTORY_PATH, updatedHistory.slice(-100)); // Keep last 100 on disk
         res.json(data);
     } catch (err) {
         console.error(err);
