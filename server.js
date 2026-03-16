@@ -110,32 +110,70 @@ discordClient.on('messageCreate', async (message) => {
     } catch (err) { console.error(err); }
 });
 
-// --- ADMIN API ---
+// --- ADMIN API UPDATES ---
+
+// Lists all unique user IDs found in either folder
 app.get("/admin/users", (req, res) => {
-    const users = fs.readdirSync(MEMORIES_DIR).map(f => {
-        const id = f.replace('.json', '');
-        const data = JSON.parse(fs.readFileSync(path.join(MEMORIES_DIR, f)));
-        return { id, name: data.name };
-    });
-    res.json(users);
+    try {
+        const memoryFiles = fs.readdirSync(MEMORIES_DIR).map(f => f.replace('.json', ''));
+        const historyFiles = fs.readdirSync(HISTORIES_DIR).map(f => f.replace('.json', ''));
+        
+        // Merge into a single list of unique IDs
+        const allIds = [...new Set([...memoryFiles, ...historyFiles])];
+
+        const users = allIds.map(id => {
+            const mPath = getMemoryPath(id);
+            let name = "Unknown User";
+            
+            if (fs.existsSync(mPath)) {
+                try {
+                    const data = JSON.parse(fs.readFileSync(mPath));
+                    name = data.name || name;
+                } catch(e) { name = "Corrupted Profile"; }
+            }
+            return { id, name };
+        });
+
+        res.json(users);
+    } catch (err) {
+        res.status(500).json({ error: "Failed to list users" });
+    }
 });
 
+// Surgical delete: kills specific files based on type
 app.post("/admin/delete", (req, res) => {
     const { id, type } = req.body;
-    if (type === 'history' || type === 'both') {
-        const p = getHistoryPath(id);
-        if (fs.existsSync(p)) fs.unlinkSync(p);
+    try {
+        if (type === 'history' || type === 'both') {
+            const p = getHistoryPath(id);
+            if (fs.existsSync(p)) {
+                fs.unlinkSync(p);
+                console.log(`🗑️ History wiped for: ${id}`);
+            }
+        }
+        if (type === 'memory' || type === 'both') {
+            const p = getMemoryPath(id);
+            if (fs.existsSync(p)) {
+                fs.unlinkSync(p);
+                console.log(`🗑️ Memory wiped for: ${id}`);
+            }
+        }
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: "Delete failed" });
     }
-    if (type === 'memory' || type === 'both') {
-        const p = getMemoryPath(id);
-        if (fs.existsSync(p)) fs.unlinkSync(p);
-    }
-    res.json({ success: true });
 });
 
-// --- REST API ---
+// --- REST API ENDPOINTS ---
 app.get("/config", (req, res) => {
-    res.json({ prompt: config.character.personality_prompt, vrm: config.character.vrm_path, user_name: config.character.user_name, history: loadUserHistory(config.character.discord_boss_id) });
+    const bossId = config.character.discord_boss_id;
+    res.json({ 
+        prompt: config.character.personality_prompt, 
+        vrm: config.character.vrm_path, 
+        user_name: config.character.user_name,
+        discord_boss_id: config.character.discord_boss_id, // Ensure this is sent to frontend
+        history: loadUserHistory(bossId) 
+    });
 });
 
 app.post("/chat", async (req, res) => {

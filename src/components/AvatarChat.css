@@ -18,10 +18,10 @@ html, body {
 
 .avatar-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100vh; z-index: 1; }
 
-/* --- Admin Panel --- */
+/* --- Admin Panel Fixes --- */
 .admin-panel {
     position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-    width: 90%; max-width: 450px; background: rgba(15, 10, 25, 0.95);
+    width: 90%; max-width: 450px; background: rgba(15, 10, 25, 0.98);
     backdrop-filter: blur(20px); border: 1px solid var(--nazuna-pink);
     border-radius: 20px; z-index: 100; padding: 20px;
     box-shadow: 0 0 50px rgba(255, 105, 180, 0.2); color: white;
@@ -31,13 +31,47 @@ html, body {
 .admin-header h3 { color: var(--nazuna-pink); margin: 0; }
 .admin-close { background: transparent; border: none; color: white; font-size: 1.2rem; cursor: pointer; }
 
-.user-list { max-height: 300px; overflow-y: auto; }
-.user-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
+/* --- Gear Button (Fixes the Diamond Bug) --- */
+.admin-btn {
+    background: transparent;
+    border: none;
+    color: var(--nazuna-pink);
+    font-size: 1.2rem;
+    cursor: pointer;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50% !important; /* Force circle */
+    transition: all 0.3s ease;
+    padding: 0;
+    margin-right: 5px;
+    outline: none;
+}
+
+.admin-btn:hover {
+    background: rgba(255, 105, 180, 0.2);
+    transform: rotate(45deg);
+}
+
+.user-list { max-height: 350px; overflow-y: auto; scrollbar-width: thin; }
+.user-item { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
 .user-info { display: flex; flex-direction: column; }
-.u-name { font-weight: bold; font-size: 0.9rem; }
-.u-id { color: #666; font-size: 0.7rem; }
-.user-actions { display: flex; gap: 5px; }
-.user-actions button { background: rgba(255, 105, 180, 0.1); border: 1px solid var(--nazuna-pink); color: var(--nazuna-pink); font-size: 0.65rem; padding: 5px; border-radius: 4px; cursor: pointer; transition: 0.2s; }
+.u-name { font-weight: bold; font-size: 0.9rem; color: #fff; }
+.u-id { color: #888; font-size: 0.7rem; }
+
+.user-actions { display: flex; gap: 8px; }
+.user-actions button { 
+    background: rgba(255, 105, 180, 0.1); 
+    border: 1px solid var(--nazuna-pink); 
+    color: var(--nazuna-pink); 
+    font-size: 0.7rem; 
+    padding: 5px 10px; 
+    border-radius: 6px; 
+    cursor: pointer; 
+    transition: 0.2s; 
+}
 .user-actions button:hover { background: var(--nazuna-pink); color: white; }
 
 /* --- Phone UI Frame --- */
@@ -51,8 +85,6 @@ html, body {
 .chat-header { padding: 12px 18px; display: flex; align-items: center; gap: 10px; background: rgba(0, 0, 0, 0.3); border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
 .status-dot { width: 8px; height: 8px; background: #00ffa3; border-radius: 50%; box-shadow: 0 0 8px #00ffa3; }
 .header-title { color: white; font-size: 0.9rem; font-weight: 600; flex: 1; }
-.admin-btn { background: transparent; border: none; color: var(--nazuna-pink); font-size: 1.2rem; cursor: pointer; opacity: 0.8; transition: 0.2s; }
-.admin-btn:hover { opacity: 1; transform: rotate(45deg); }
 
 /* --- Bubbles --- */
 .user-bubble { background: rgba(255, 105, 180, 0.9); color: white; padding: 10px 14px; border-radius: 18px 18px 4px 18px; font-size: 0.9rem; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }

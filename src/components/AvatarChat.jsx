@@ -12,7 +12,6 @@ export default function AvatarChat() {
     const [showAdmin, setShowAdmin] = useState(false);
     const [allUsers, setAllUsers] = useState([]);
 
-    // --- 1. INITIALIZE REFS ONCE HERE ---
     const mouthTarget = useRef({ aa: 0, oh: 0, ih: 0 });
     const emotionTarget = useRef({ happy: 0, relaxed: 0, surprised: 0, angry: 0 });
     const actionTarget = useRef({ lean: 0, blush: 0, nod: 0, tilt: 0 });
@@ -23,7 +22,6 @@ export default function AvatarChat() {
         fetch(`${bridgeUrl}/config`).then(res => res.json()).then(setConfig);
     }, [bridgeUrl]);
 
-    // --- 2. PASS REFS TO BOTH HOOKS ---
     const {
         chatLog, setChatLog, loading, sendMessage, chatState,
         analyserRef, isAISpeaking, isListening, toggleCallMode
@@ -33,21 +31,18 @@ export default function AvatarChat() {
 
     useEffect(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), [chatLog]);
 
-    // --- 3. LIP SYNC LOOP (Updates the shared mouthTarget) ---
     useEffect(() => {
         let frame;
         const loop = () => {
             if (analyserRef.current && isAISpeaking) {
                 const data = new Uint8Array(analyserRef.current.fftSize);
                 analyserRef.current.getByteTimeDomainData(data);
-                
                 let sumSq = 0;
                 for (let i = 0; i < data.length; i++) {
                     const amp = (data[i] - 128) / 128;
                     sumSq += amp * amp;
                 }
                 const volume = Math.sqrt(sumSq / data.length);
-                // Adjust 12.0 to make her mouth open wider or narrower
                 mouthTarget.current.aa = Math.min(volume * 12.0, 0.8);
             } else {
                 mouthTarget.current.aa = 0;
@@ -57,6 +52,36 @@ export default function AvatarChat() {
         loop();
         return () => cancelAnimationFrame(frame);
     }, [isAISpeaking, analyserRef]);
+
+    // Admin Handlers
+    const fetchUsers = async () => {
+        const res = await fetch(`${bridgeUrl}/admin/users`);
+        const data = await res.json();
+        setAllUsers(data);
+    };
+
+    const deleteUserData = async (id, type) => {
+        const label = type === 'both' ? 'everything' : type;
+        if (!window.confirm(`Wipe ${label} for this user?`)) return;
+
+        try {
+            const res = await fetch(`${bridgeUrl}/admin/delete`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ id, type })
+            });
+
+            if (res.ok) {
+                // If the user deleted is YOU, clear the chat screen
+                if (id === config.discord_boss_id && (type === 'history' || type === 'both')) {
+                    setChatLog([]);
+                }
+                fetchUsers(); // Refresh the list in the admin panel
+            }
+        } catch (err) {
+            console.error("Delete failed:", err);
+        }
+    };
 
     const handleSend = () => {
         if (!message.trim()) return;
@@ -81,11 +106,12 @@ export default function AvatarChat() {
                             <div key={u.id} className="user-item">
                                 <div className="user-info">
                                     <span className="u-name">{u.name}</span>
-                                    <span className="u-id">{u.id === config.discord_boss_id ? "BOSS" : u.id}</span>
+                                    <span className="u-id">{u.id === config.discord_boss_id ? "BOSS (YOU)" : u.id}</span>
                                 </div>
                                 <div className="user-actions">
-                                    <button onClick={async () => { if(window.confirm('Wipe chat?')) { await fetch(`${bridgeUrl}/admin/delete`, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({id:u.id, type:'history'})}); fetch(`${bridgeUrl}/admin/users`).then(r=>r.json()).then(setAllUsers); if(u.id === config.discord_boss_id) setChatLog([]); }}}>Chat</button>
-                                    <button onClick={async () => { if(window.confirm('Wipe facts?')) { await fetch(`${bridgeUrl}/admin/delete`, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({id:u.id, type:'memory'})}); fetch(`${bridgeUrl}/admin/users`).then(r=>r.json()).then(setAllUsers); }}}>Facts</button>
+                                    <button onClick={() => deleteUserData(u.id, 'history')}>Chat</button>
+                                    <button onClick={() => deleteUserData(u.id, 'memory')}>Facts</button>
+                                    <button onClick={() => deleteUserData(u.id, 'both')}>All</button>
                                 </div>
                             </div>
                         ))}
@@ -97,17 +123,20 @@ export default function AvatarChat() {
                 <div className="chat-header">
                     <div className="status-dot" />
                     <span className="header-title">Nazuna Nanakusa</span>
-                    <button onClick={() => { setShowAdmin(true); fetch(`${bridgeUrl}/admin/users`).then(r=>r.json()).then(setAllUsers); }} className="admin-btn">⚙</button>
+                    <button onClick={() => { setShowAdmin(true); fetchUsers(); }} className="admin-btn">⚙</button>
                 </div>
 
                 <div className="message-area">
-                    {chatLog.map((c, i) => (
-                        <div key={i} className={c.role.toLowerCase() === "user" ? "user-row" : "ai-row"}>
-                            <div className={c.role.toLowerCase() === "user" ? "user-bubble" : "ai-bubble"}>
-                                {c.content.replace(/\[.*?\]/g, "").trim()}
+                    {chatLog.map((c, i) => {
+                        const isUser = c.role.toLowerCase() === "user";
+                        return (
+                            <div key={i} className={isUser ? "user-row" : "ai-row"}>
+                                <div className={isUser ? "user-bubble" : "ai-bubble"}>
+                                    {c.content.replace(/\[.*?\]/g, "").trim()}
+                                </div>
                             </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                     {loading && <div className="loading-text">thinking...</div>}
                     <div ref={chatEndRef} />
                 </div>
