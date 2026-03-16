@@ -24,21 +24,43 @@ const getHistoryPath = (id) => path.join(HISTORIES_DIR, `${id}.json`);
 const getMemoryPath = (id) => path.join(MEMORIES_DIR, `${id}.json`);
 
 const loadUserHistory = (id) => fs.existsSync(getHistoryPath(id)) ? loadJson(getHistoryPath(id)) : [];
-const loadUserMemory = (id, def) => fs.existsSync(getMemoryPath(id)) ? loadJson(getMemoryPath(id)) : { name: def, facts: [] };
+const loadUserMemory = (id, def) => fs.existsSync(getMemoryPath(id)) ? loadJson(getMemoryPath(id)) : { name: def, facts: [], summary: "" };
 
 const config = loadJson(CONFIG_PATH);
 app.use(cors({ origin: config.server_settings.frontend_url }));
 
 const discordClient = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
 
+// --- SUMMARIZATION HELPER (Asynchronous) ---
+async function summarizeHistory(history, currentSummary = "") {
+    try {
+        const response = await fetch("https://api.openai.com/v1/chat/completions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.OPENAI_API_KEY}` },
+            body: JSON.stringify({
+                model: "gpt-4o-mini",
+                messages: [
+                    { role: "system", content: "You are a memory assistant. Summarize the following conversation history into a single concise paragraph. Focus on key topics discussed and the user's current mood. Keep it under 60 words." },
+                    { role: "user", content: `Existing Summary: ${currentSummary}\n\nNew Messages:\n${history.map(m => `${m.role}: ${m.content}`).join("\n")}` }
+                ],
+                temperature: 0.3,
+            })
+        });
+        const data = await response.json();
+        return data.choices[0].message.content;
+    } catch (e) {
+        console.error("❌ Background Summarization failed:", e);
+        return currentSummary;
+    }
+}
+
 async function getNazunaResponse(userMessages, senderName, senderId) {
     const bossId = config.character.discord_boss_id;
     const bossName = config.character.user_name;
     const isBoss = (senderId === bossId);
 
-    const history = loadUserHistory(senderId);
-    const memory = loadUserMemory(senderId, senderName);
-    const bossMemory = isBoss ? memory : loadUserMemory(bossId, bossName);
+    let history = loadUserHistory(senderId);
+    let memory = loadUserMemory(senderId, senderName);
 
     const now = new Date();
     const currentTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -47,18 +69,18 @@ async function getNazunaResponse(userMessages, senderName, senderId) {
 ### CRITICAL OUTPUT INSTRUCTIONS:
 1. Every response MUST start with an emotion tag: [NEUTRAL], [HAPPY], [RELAXED], [SURPRISED],[ANGRY], or [SAD].
 2. Every response MUST end with an action tag:[ACTION: LEAN], [ACTION: BLUSH], [ACTION: NOD], or [ACTION: TILT].
-3. **OBSERVATIONAL LEARNING (MANDATORY):** If ${senderName} mentions a preference, a person they like, a hobby, a job, or an event, you MUST append [MEMORY: specific fact] at the absolute end of your message.
-   - Example user says: "I like coffee." -> You reply: "... [ACTION: TILT][MEMORY: likes coffee]"
-   - Example user says: "I'm a coder." -> You reply: "... [ACTION: NOD] [MEMORY: works as a coder]"
+3. **OBSERVATIONAL LEARNING:** If ${senderName} mentions a fact, append [MEMORY: specific fact] at the absolute end.
 
-### CONTEXT:
+### CURRENT CONTEXT:
 - Talking to: ${senderName}. ${isBoss ? "(This is your Boss/Partner, Psycho)" : ""}
 - Current Time: ${currentTime}.
+- Ongoing Chat Summary: ${memory.summary || "You're just starting the night together."}
 
 ### PERMANENT RECORDS FOR ${senderName.toUpperCase()}:
 ${memory.facts.length > 0 ? memory.facts.join(", ") : "None yet. Learn about them!"}
     `;
 
+    // Get the response from GPT
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.OPENAI_API_KEY}` },
@@ -74,12 +96,14 @@ ${memory.facts.length > 0 ? memory.facts.join(", ") : "None yet. Learn about the
     });
 
     const data = await response.json();
+    if (!data.choices) throw new Error("AI Error");
+    
     let aiText = data.choices[0].message.content;
 
+    // Process [MEMORY:] tags
     const memoryMatch = aiText.match(/\[MEMORY:\s*(.*?)\]/i);
     if (memoryMatch) {
         const newFact = memoryMatch[1].trim().replace(/\]$/, '');
-
         const currentMemory = loadUserMemory(senderId, senderName);
         const alreadyKnown = currentMemory.facts.some(f => f.toLowerCase() === newFact.toLowerCase());
 
@@ -88,12 +112,33 @@ ${memory.facts.length > 0 ? memory.facts.join(", ") : "None yet. Learn about the
             saveJson(getMemoryPath(senderId), currentMemory);
             console.log(`✨ Memory Logged for ${senderName}: ${newFact}`);
         }
-
         aiText = aiText.replace(/\[MEMORY:.*?\]/gi, "").trim();
-        data.choices[0].message.content = aiText;
     }
 
-    saveJson(getHistoryPath(senderId), [...history, { role: "user", content: userMessages[0].content }, { role: "assistant", content: aiText, timestamp: now.toISOString() }].slice(-100));
+    // Save history with the current exchange
+    const newHistory = [...history, { role: "user", content: userMessages[0].content }, { role: "assistant", content: aiText, timestamp: now.toISOString() }];
+    saveJson(getHistoryPath(senderId), newHistory);
+
+    // --- BACKGROUND MAINTENANCE (Non-blocking) ---
+    // Trigger cleanup if history exceeds 30 items
+    if (newHistory.length > 30) {
+        console.log(`🧠 History for ${senderName} is long. Starting background condensation...`);
+        (async () => {
+            const toSummarize = newHistory.slice(0, 15);
+            const remainingHistory = newHistory.slice(15);
+            
+            const updatedSummary = await summarizeHistory(toSummarize, memory.summary || "");
+            
+            // Reload to ensure we don't overwrite other memory changes
+            const finalMem = loadUserMemory(senderId, senderName);
+            finalMem.summary = updatedSummary;
+            
+            saveJson(getMemoryPath(senderId), finalMem);
+            saveJson(getHistoryPath(senderId), remainingHistory);
+            console.log(`✨ History condensed for ${senderName}.`);
+        })();
+    }
+
     return aiText;
 }
 
@@ -110,21 +155,15 @@ discordClient.on('messageCreate', async (message) => {
     } catch (err) { console.error(err); }
 });
 
-// --- ADMIN API UPDATES ---
-
-// Lists all unique user IDs found in either folder
+// --- ADMIN API ---
 app.get("/admin/users", (req, res) => {
     try {
         const memoryFiles = fs.readdirSync(MEMORIES_DIR).map(f => f.replace('.json', ''));
         const historyFiles = fs.readdirSync(HISTORIES_DIR).map(f => f.replace('.json', ''));
-        
-        // Merge into a single list of unique IDs
         const allIds = [...new Set([...memoryFiles, ...historyFiles])];
-
         const users = allIds.map(id => {
             const mPath = getMemoryPath(id);
             let name = "Unknown User";
-            
             if (fs.existsSync(mPath)) {
                 try {
                     const data = JSON.parse(fs.readFileSync(mPath));
@@ -133,45 +172,33 @@ app.get("/admin/users", (req, res) => {
             }
             return { id, name };
         });
-
         res.json(users);
-    } catch (err) {
-        res.status(500).json({ error: "Failed to list users" });
-    }
+    } catch (err) { res.status(500).json({ error: "Failed to list users" }); }
 });
 
-// Surgical delete: kills specific files based on type
 app.post("/admin/delete", (req, res) => {
     const { id, type } = req.body;
     try {
         if (type === 'history' || type === 'both') {
             const p = getHistoryPath(id);
-            if (fs.existsSync(p)) {
-                fs.unlinkSync(p);
-                console.log(`🗑️ History wiped for: ${id}`);
-            }
+            if (fs.existsSync(p)) fs.unlinkSync(p);
         }
         if (type === 'memory' || type === 'both') {
             const p = getMemoryPath(id);
-            if (fs.existsSync(p)) {
-                fs.unlinkSync(p);
-                console.log(`🗑️ Memory wiped for: ${id}`);
-            }
+            if (fs.existsSync(p)) fs.unlinkSync(p);
         }
         res.json({ success: true });
-    } catch (err) {
-        res.status(500).json({ error: "Delete failed" });
-    }
+    } catch (err) { res.status(500).json({ error: "Delete failed" }); }
 });
 
-// --- REST API ENDPOINTS ---
+// --- REST API ---
 app.get("/config", (req, res) => {
     const bossId = config.character.discord_boss_id;
     res.json({ 
         prompt: config.character.personality_prompt, 
         vrm: config.character.vrm_path, 
         user_name: config.character.user_name,
-        discord_boss_id: config.character.discord_boss_id, // Ensure this is sent to frontend
+        discord_boss_id: config.character.discord_boss_id,
         history: loadUserHistory(bossId) 
     });
 });
@@ -190,14 +217,12 @@ app.post("/tts", async (req, res) => {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ text: req.body.text.replace(/\[.*?\]/g, "").trim() })
         });
-
         const arrayBuffer = await response.arrayBuffer();
-
-        // --- ADD THESE TO ALLOW LIP SYNC ---
         res.setHeader("Access-Control-Allow-Origin", "*");
         res.setHeader("Content-Type", "audio/wav");
         res.send(Buffer.from(arrayBuffer));
     } catch (err) { res.status(500).send(err); }
 });
+
 discordClient.login(process.env.DISCORD_TOKEN);
-app.listen(config.server_settings.bridge_port, () => console.log("✅ Bridge & Admin Active"));
+app.listen(config.server_settings.bridge_port, () => console.log(`✅ Bridge & Admin Active on port ${config.server_settings.bridge_port}`));
