@@ -1,23 +1,26 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 
+/**
+ * useVoiceChat Hook
+ * Manages the conversation flow: sending text to the bridge, 
+ * parsing AI moods/actions, and handling the TTS audio stream.
+ */
 export function useVoiceChat(config, mouthTarget, emotionTarget, actionTarget) {
     const [chatLog, setChatLog] = useState([]);
     const [loading, setLoading] = useState(false);
-    const [isListening, setIsListening] = useState(false);
-    const [chatState, setChatState] = useState("idle");
     const [uiCallActive, setUiCallActive] = useState(false);
     const [isAISpeaking, setIsAISpeaking] = useState(false);
+    const [chatState, setChatState] = useState("idle");
 
     const audioRef = useRef(null);
     const analyserRef = useRef(null);
     const audioCtxRef = useRef(null);
     const recognitionRef = useRef(null);
-    const sendMessageRef = useRef(null);
-
     const bridgeUrl = `http://${window.location.hostname}:3001`;
 
+    // Initialize History from Config
     useEffect(() => {
-        if (config && config.history) {
+        if (config?.history) {
             setChatLog(config.history.map(m => ({
                 role: m.role === "user" ? "user" : "Nazuna",
                 content: m.content
@@ -25,6 +28,33 @@ export function useVoiceChat(config, mouthTarget, emotionTarget, actionTarget) {
         }
     }, [config]);
 
+    // --- HELPER: Parse Moods & Actions ---
+    const processAIVisuals = (text) => {
+        // 1. Extract Mood [HAPPY]
+        const moodMatch = text.match(/^\[(.*?)\]/);
+        const mood = moodMatch ? moodMatch[1].toLowerCase() : "neutral";
+        
+        const nextEmotions = {}; 
+        Object.keys(emotionTarget.current).forEach(k => nextEmotions[k] = 0);
+        if (nextEmotions.hasOwnProperty(mood)) nextEmotions[mood] = 1;
+        emotionTarget.current = nextEmotions;
+
+        // 2. Extract Actions [ACTION: LEAN]
+        if (actionTarget.current) {
+            actionTarget.current = {
+                lean: text.includes("LEAN") ? 1 : 0,
+                blush: text.includes("BLUSH") ? 1 : 0,
+                nod: text.includes("NOD") ? 1 : 0,
+                tilt: text.includes("TILT") ? 1 : 0
+            };
+            // Reset actions after 7 seconds
+            setTimeout(() => {
+                actionTarget.current = { lean: 0, blush: 0, nod: 0, tilt: 0 };
+            }, 7000);
+        }
+    };
+
+    // --- CORE: TTS PLAYBACK ---
     const speak = async (text, fullAiResponse) => {
         try {
             const cleanText = text.replace(/\[.*?\]/g, "").trim();
@@ -67,82 +97,83 @@ export function useVoiceChat(config, mouthTarget, emotionTarget, actionTarget) {
                 setChatState("idle");
                 source.disconnect();
                 analyser.disconnect();
-                if (isCallActive.current) try { recognitionRef.current.start(); } catch (e) { }
+                if (uiCallActive) try { recognitionRef.current.start(); } catch (e) { }
             };
             audio.play();
         } catch (err) {
-            console.error("Voice Error:", err);
-            setChatLog(prev => [...prev, { role: "Nazuna", content: fullAiResponse }]);
+            console.error("❌ [Voice Hook] Error:", err);
             setLoading(false);
-            setIsAISpeaking(false);
+            setChatState("idle");
         }
     };
 
+    // --- CORE: SEND MESSAGE ---
     const sendMessage = useCallback(async (msg) => {
-        if (!msg || !msg.trim() || loading || !config) return;
+        if (!msg?.trim() || loading || !config) return;
+        
         setLoading(true);
         setChatState("thinking");
 
-        setChatLog(prevLog => {
-            const updatedLog = [...prevLog, { role: "user", content: msg }];
-            fetch(`${bridgeUrl}/chat`, {
+        // Add user message to UI immediately
+        setChatLog(prev => [...prev, { role: "user", content: msg }]);
+
+        try {
+            const response = await fetch(`${bridgeUrl}/chat`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    messages: updatedLog.slice(-12).map(m => ({
-                        role: m.role.toLowerCase() === "user" ? "user" : "assistant",
-                        content: m.content
-                    }))
+                    messages: [{ role: "user", content: msg }]
                 })
-            })
-            .then(res => res.json())
-            .then(data => {
-                if (data.choices && data.choices[0]) {
-                    const aiText = data.choices[0].message.content;
-                    const moodMatch = aiText.match(/^\[(.*?)\]/);
-                    const mood = moodMatch ? moodMatch[1].toLowerCase() : "neutral";
-                    const nextEmotions = {}; Object.keys(emotionTarget.current).forEach(k => nextEmotions[k] = 0);
-                    nextEmotions[mood] = 1; emotionTarget.current = nextEmotions;
+            });
 
-                    if (actionTarget.current) {
-                        actionTarget.current = {
-                            lean: aiText.includes("LEAN") ? 1 : 0, blush: aiText.includes("BLUSH") ? 1 : 0,
-                            nod: aiText.includes("NOD") ? 1 : 0, tilt: aiText.includes("TILT") ? 1 : 0
-                        };
-                        setTimeout(() => { actionTarget.current = { lean: 0, blush: 0, nod: 0, tilt: 0 }; }, 7000);
-                    }
-                    speak(aiText, aiText);
-                }
-            })
-            .catch(() => { setLoading(false); setChatState("idle"); });
-            return updatedLog;
-        });
-    }, [config, loading, bridgeUrl, emotionTarget, actionTarget]);
+            const data = await response.json();
+            if (data.choices?.[0]?.message) {
+                const aiText = data.choices[0].message.content;
+                processAIVisuals(aiText);
+                speak(aiText, aiText);
+            }
+        } catch (err) {
+            console.error("❌ [Chat Hook] Error:", err);
+            setLoading(false);
+            setChatState("idle");
+        }
+    }, [config, loading, bridgeUrl]);
 
-    useEffect(() => { sendMessageRef.current = sendMessage; }, [sendMessage]);
-
+    // --- SPEECH RECOGNITION SETUP ---
     useEffect(() => {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SpeechRecognition) return;
+
         const rec = new SpeechRecognition();
         rec.lang = "en-US";
-        rec.onstart = () => { setIsListening(true); setChatState("listening"); };
-        rec.onend = () => setIsListening(false);
-        rec.onresult = (e) => sendMessageRef.current(e.results[0][0].transcript);
+        rec.continuous = false;
+        
+        rec.onstart = () => { setChatState("listening"); };
+        rec.onresult = (e) => {
+            const transcript = e.results[0][0].transcript;
+            sendMessage(transcript);
+        };
+        
         recognitionRef.current = rec;
-    }, []);
+    }, [sendMessage]);
 
+    // Auto-restart listening if in Call Mode
     useEffect(() => {
-        if (uiCallActive && !isListening && !isAISpeaking && !loading) {
-            const timeout = setTimeout(() => { try { recognitionRef.current?.start(); } catch(e) {} }, 300);
-            return () => clearTimeout(timeout);
+        if (uiCallActive && !isAISpeaking && !loading && chatState !== "listening") {
+            const timer = setTimeout(() => {
+                try { recognitionRef.current?.start(); } catch(e) {}
+            }, 500);
+            return () => clearTimeout(timer);
         }
-    }, [uiCallActive, isListening, loading, isAISpeaking]);
+    }, [uiCallActive, isAISpeaking, loading, chatState]);
 
     return { 
         chatLog, setChatLog, loading, sendMessage, 
         analyserRef, isAISpeaking, isListening: uiCallActive, 
-        toggleCallMode: (e) => { if(e){e.preventDefault(); e.stopPropagation();} setUiCallActive(p => !p); },
+        toggleCallMode: (e) => { 
+            if(e) { e.preventDefault(); e.stopPropagation(); }
+            setUiCallActive(prev => !prev); 
+        },
         chatState 
     };
 }

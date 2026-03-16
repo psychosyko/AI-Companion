@@ -5,105 +5,127 @@ import uuid
 import asyncio
 import edge_tts
 import shutil
-import io  # <--- New import for memory handling
+import io
+import time
 from rvc_python.infer import RVCInference
 from flask import Flask, request, send_file
 
-# --- INITIALIZATION & CONFIG ---
-with open('config.json', 'r') as f:
-    config = json.load(f)
-
-# PyTorch 2.6 Security Bypass
+# --- 1. PYTORCH SECURITY BYPASS ---
+# Required for PyTorch 2.6+ to load local RVC models safely
 original_load = torch.load
 def patched_torch_load(*args, **kwargs):
     kwargs['weights_only'] = False
     return original_load(*args, **kwargs)
 torch.load = patched_torch_load
 
+# --- 2. INITIALIZATION & CONFIG ---
 app = Flask(__name__)
 
-# Config Paths
-MODEL_PATH = os.path.abspath(config['voice_settings']['rvc_model_path'])
-INDEX_PATH = os.path.abspath(config['voice_settings']['rvc_index_path'])
-SAVE_VOICES = config['voice_settings'].get('save_voice_files', False)
+with open('config.json', 'r') as f:
+    config = json.load(f)
 
-if SAVE_VOICES and not os.path.exists('voice_logs'):
+# Config Shortcuts
+VOICE_SETTINGS = config['voice_settings']
+MODEL_PATH = os.path.abspath(VOICE_SETTINGS['rvc_model_path'])
+INDEX_PATH = os.path.abspath(VOICE_SETTINGS['rvc_index_path'])
+SAVE_LOGS = VOICE_SETTINGS.get('save_voice_files', False)
+
+if SAVE_LOGS and not os.path.exists('voice_logs'):
     os.makedirs('voice_logs')
 
-# Initialize RVC 
-rvc_infer = RVCInference(device="cpu")
+# Initialize RVC Engine
+print("🚀 [Voice] Initializing RVC Engine...")
+rvc_infer = RVCInference(device="cpu") # Change to "cuda" if you have an NVIDIA GPU
 
-async def generate_base_voice(text, output_path):
-    speed = config['voice_settings']['speed']
-    voice = config['voice_settings']['base_voice']
-    rate_str = f"+{int((float(speed) - 1) * 100)}%"
-    # Remove leading dots/spaces for better TTS stability
-    clean_text = text.replace('...', '').strip()
+# --- 3. CORE FUNCTIONS ---
+
+async def run_tts(text, output_path):
+    """Generates the base voice using Microsoft Edge TTS."""
+    speed = VOICE_SETTINGS['speed']
+    voice = VOICE_SETTINGS['base_voice']
+    # Format: +10% or -10%
+    rate_str = f"+{int((float(speed) - 1) * 100)}%" if float(speed) >= 1 else f"-{int((1 - float(speed)) * 100)}%"
+    
+    # Remove ellipses for smoother flow
+    clean_text = text.replace('...', ' ').strip()
+    
     communicate = edge_tts.Communicate(clean_text, voice, rate=rate_str)
     await communicate.save(output_path)
 
 @app.route("/tts", methods=["POST"])
 def voice_pipeline():
+    start_time = time.time()
     data = request.json
     text = data.get("text", "")
     
+    if not text:
+        return "No text provided", 400
+
     request_id = str(uuid.uuid4())[:8]
-    base_audio = os.path.abspath(f"base_{request_id}.wav")
-    final_audio = os.path.abspath(f"nazuna_{request_id}.wav")
+    temp_base = os.path.abspath(f"base_{request_id}.wav")
+    temp_final = os.path.abspath(f"final_{request_id}.wav")
 
     try:
-        # Step 1: Generate base voice
-        asyncio.run(generate_base_voice(text, base_audio))
+        # Step 1: Base TTS
+        print(f"🎙️ [TTS] Generating base for: {text[:30]}...")
+        asyncio.run(run_tts(text, temp_base))
 
-        # Step 2: Apply RVC Model
+        # Step 2: RVC Inference
+        print(f"✨ [RVC] Converting to Nazuna ({request_id})...")
         rvc_infer.f0_method = "rmvpe"
-        rvc_infer.index_rate = config['voice_settings']['index_rate']
-        rvc_infer.f0_up_key = config['voice_settings']['pitch_shift']
+        rvc_infer.index_rate = VOICE_SETTINGS['index_rate']
+        rvc_infer.f0_up_key = VOICE_SETTINGS['pitch_shift']
         
-        rvc_infer.infer_file(base_audio, final_audio)
+        rvc_infer.infer_file(temp_base, temp_final)
         
-        if not os.path.exists(final_audio):
-            raise Exception("RVC failed to generate file")
+        if not os.path.exists(temp_final):
+            raise Exception("RVC output file missing")
 
-        # --- NEW LOGIC: READ TO MEMORY AND CLEANUP ---
-        # We read the file into RAM so we can delete the disk version immediately
-        with open(final_audio, 'rb') as f:
+        # Step 3: Stream from RAM
+        with open(temp_final, 'rb') as f:
             audio_buffer = io.BytesIO(f.read())
         audio_buffer.seek(0)
 
-        if SAVE_VOICES:
-            log_path = os.path.join("voice_logs", f"nazuna_{request_id}.wav")
-            # Copy instead of move so we can still use the buffer
-            shutil.copy(final_audio, log_path)
-            print(f"📁 Saved voice to: {log_path}")
+        # Log file if enabled
+        if SAVE_LOGS:
+            log_name = os.path.join("voice_logs", f"nazuna_{request_id}.wav")
+            shutil.copy(temp_final, log_name)
 
-        # Delete the temporary files from disk now that we have the data in RAM
-        if os.path.exists(base_audio): os.remove(base_audio)
-        if os.path.exists(final_audio): os.remove(final_audio)
-        
-        print(f"✨ Voice generated and disk cleaned for {request_id}")
+        duration = round(time.time() - start_time, 2)
+        print(f"✅ [Done] Request {request_id} finished in {duration}s")
 
-        # Send the audio from RAM
         return send_file(audio_buffer, mimetype="audio/wav")
 
     except Exception as e:
-        print(f"❌ Pipeline Error: {e}")
-        # Final emergency cleanup
-        for f in [base_audio, final_audio]:
-            if os.path.exists(f): 
-                try: os.remove(f)
-                except: pass
+        print(f"❌ [Error] Pipeline failed: {e}")
         return str(e), 500
 
+    finally:
+        # STEP 4: CLEANUP (Always runs, even on error)
+        for f in [temp_base, temp_final]:
+            if os.path.exists(f):
+                try: os.remove(f)
+                except: pass
+
+# --- 4. STARTUP ---
 if __name__ == "__main__":
-    print(f"--- Nazuna Voice Server ---")
-    try:
-        rvc_infer.load_model(MODEL_PATH)
-        if os.path.exists(INDEX_PATH):
-            rvc_infer.index_path = INDEX_PATH
-    except Exception as e:
-        print(f"Critical Load Error: {e}")
+    print("--- Nazuna Nanakusa Voice Server ---")
+    
+    # Check if model exists
+    if not os.path.exists(MODEL_PATH):
+        print(f"❌ [Critical] Model not found at: {MODEL_PATH}")
+        print("Please check your RVC_Nazuna folder.")
+    else:
+        try:
+            rvc_infer.load_model(MODEL_PATH)
+            if os.path.exists(INDEX_PATH):
+                rvc_infer.index_path = INDEX_PATH
+                print("✅ [Voice] Model and Index loaded successfully.")
+            else:
+                print("⚠️ [Voice] Index file not found. Inference will still work but quality may be lower.")
+        except Exception as e:
+            print(f"❌ [Critical] Failed to load model: {e}")
 
     port = config['server_settings']['voice_port']
-    print(f"✅ RVC Pipeline Active on port {port}")
+    print(f"📡 [Voice] Listening on port {port}")
     app.run(port=port, host='127.0.0.1', debug=False)
