@@ -234,7 +234,7 @@ html, body {
     filter: drop-shadow(0 0 10px var(--nazuna-pink-glow));
     transition: transform 0.2s ease;
 }
-.send-btn:hover:not(:disabled) svg { transform: scale(1.5) translateX(3px) !important; }
+.send-btn:hover:not(:disabled) svg { transform: scale(1.3) translateX(3px) !important; }
 .send-btn:disabled { opacity: 0.2; cursor: default; }
 
 .loading-text { color: var(--nazuna-pink); font-size: 0.9rem; font-style: italic; padding-left: 10px; }
