@@ -1,13 +1,6 @@
---extra-index-url https://download.pytorch.org/whl/cu118
-torch
-torchvision
-torchaudio
 flask
 flask-cors
-openai
-python-dotenv
+torch
 edge-tts
 rvc-python
 uuid
-numpy==1.25.2
-fairseq==0.12.2
