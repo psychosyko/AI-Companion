@@ -1,5 +1,5 @@
 @echo off
-title AI-companion Launcher
+title 🦇 Nazuna AI Launcher
 setlocal
 
 :: Check for .env file
@@ -11,17 +11,17 @@ if not exist .env (
 )
 
 echo [1/3] Waking up the voice server...
-start "Voice (Python)" cmd /k "python rvc_server.py"
+start "Nazuna Voice (Python)" cmd /k "python rvc_server.py"
 
 timeout /t 2 >nul
 
 echo [2/3] Connecting the bridge...
-start "Bridge (Node)" cmd /k "node server.js"
+start "Nazuna Bridge (Node)" cmd /k "node server.js"
 
 timeout /t 2 >nul
 
 echo [3/3] Opening the 3D world...
-start "Frontend (Vite)" cmd /k "npm run dev"
+start "Nazuna Frontend (Vite)" cmd /k "npm run dev"
 
 echo.
 echo 🦇 Nazuna is waking up. Keep these windows open!
