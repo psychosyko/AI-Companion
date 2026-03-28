@@ -1,97 +1,90 @@
 # 🦇 Nazuna AI Companion
 
-A highly customizable, local-first AI companion featuring **Nazuna Nanakusa** from *Call of the Night*. This project integrates an LLM "brain" via OpenAI, a real-time 3D VRM model, and a high-quality local voice pipeline using **RVC** (Retrieval-based Voice Conversion).
-
----
+A high-fidelity, local-first AI companion featuring **Nazuna Nanakusa** from *Call of the Night*. This project integrates a GPT-4o-mini "brain", a real-time 3D VRM model with procedural animations, and a customizable voice pipeline (Edge-TTS + RVC).
 
 ## 🚀 Step-by-Step Installation
 
 ### 1. Prerequisites
-Ensure you have the following installed on your Windows machine:
 *   **Node.js** (v18 or higher)
-*   **Python** (3.10.x recommended)
-*   **Git**
+*   **Python** (3.10.x recommended - required for RVC)
+*   **OpenAI API Key** (for her "brain")
 
-### 2. Setup the Project
-Clone the repository and install the Node.js dependencies for the bridge and frontend:
+### 2. Core Setup
+Clone the repository and install the Node.js dependencies:
 ```bash
 git clone https://github.com/psychosyko/AI-Companion.git
 cd ai-companion
 npm install
 ```
 
-### 3. Setup the Python Voice Server
-It is highly recommended to use a virtual environment to keep your global Python install clean:
+### 3. Voice Server Setup (Python)
+It is highly recommended to use a virtual environment:
 ```bash
-# Create the virtual environment
+# Create and activate venv
 python -m venv venv
-
-# Activate the environment
 .\venv\Scripts\activate
 
-# Install the required libraries
+# Install requirements
 pip install -r requirements.txt
 ```
 
-### 4. Download the Voice Model (RVC)
-To get the authentic Nazuna voice (Sora Amamiya), follow these steps:
-1.  Go to the [Sora Amamiya RVC Repository](https://huggingface.co/orhay1/RVC_Amamiya_Sora/tree/main).
-2.  Download **`Amamiya_Sora_rmvpe.zip`**.
-3.  Create a folder in your project root named `RVC_Nazuna`.
-4.  Extract the `.pth` and `.index` files into that folder.
-5.  **Important:** Ensure the filenames in the folder match the paths defined in your `config.json`. (e.g., Rename them to `AmamiyaSora.pth` and `AmamiyaSora.index`).
+### 4. Downloading the Voice Model (Optional)
+To use her authentic voice (Sora Amamiya), you need an RVC model:
+1.  Download an RVC model (e.g., from [HuggingFace](https://huggingface.co/orhay1/RVC_Amamiya_Sora/tree/main)).
+2.  Create a folder named `RVC_Nazuna` in the root directory.
+3.  Place the `.pth` and `.index` files inside and ensure the names match `config.json`.
 
-### 5. Add your API Key
-For security, your API key is stored in a hidden `.env` file rather than the source code:
-1.  Create a file named **`.env`** in the root folder.
-2.  Paste your OpenAI key inside:
-    ```env
-    OPENAI_API_KEY=sk-proj-your-actual-key-here
-    ```
+**Note:** If you have a slow machine, you can disable this in `config.json` by setting `"rvc_enabled": false`.
+
+### 5. API Configuration
+Initialize your environment file by copying the template, then add your OpenAI key:
+
+**Windows:** `copy .env.example .env`  
+**macOS/Linux:** `cp .env.example .env`
+
+```env
+OPENAI_API_KEY=sk-proj-your-actual-key-here
+DISCORD_TOKEN=your_optional_bot_token_here
+```
 
 ---
 
-## ⚙️ Configuration (`config.json`)
+## ⚙️ Key Features
 
-The `config.json` file is the central hub for the app. You can modify it to change her personality or swap her models without touching the code.
+### 🧠 The Brain (Summarization & Memory)
+Nazuna doesn't just remember facts; she understands the context of the night.
+*   **Permanent Facts:** Learns your name, hobbies, and likes automatically via `[MEMORY]` tags.
+*   **Background Summarization:** After 30 messages, she automatically condenses the history into a summary to keep API costs low and her memory sharp.
 
-| Section | Description |
+### 🎙️ The Voice (High Quality vs. Fast)
+*   **RVC Mode:** (High CPU) Uses Retrieval-based Voice Conversion for 1:1 anime voice accuracy.
+*   **Light Mode:** (Low CPU) Disable RVC in config to use high-quality Microsoft Neural voices directly. Nazuna will respond nearly instantly.
+
+### 🎭 Visual Engine
+*   **Procedural Animation:** Includes natural breathing, eye saccades (darting), and micro-expressions.
+*   **State-Based Physics:** Her head and eyes follow you, but react differently when she is "thinking," "listening," or "talking."
+*   **Lip-Sync:** Real-time analysis of the audio frequency moves her mouth accurately.
+
+---
+
+## 🎮 How to Run
+
+1.  **Double-click `START.bat`**. 
+    *   This will launch the Voice Server, the Logic Bridge, and the Frontend.
+2.  Wait for the **"SUMMONING NAZUNA"** loading bar to hit 100%.
+3.  **Click the Gear Icon (⚙️)** to view "Vampire Records" (Admin Panel) to manage what she knows about you.
+4.  **Click the Microphone Icon** to enable "Hands-Free" mode.
+
+---
+
+## 🛠️ Customization (`config.json`)
+
+| Setting | Description |
 | :--- | :--- |
-| **`character`** | Change the `user_name`, 3D `vrm_path`, and the detailed `personality_prompt`. |
-| **`voice_settings`** | Set the RVC model paths, change the `base_voice`, or toggle `save_voice_files`. |
-| **`server_settings`** | Configure the ports for the Node bridge (3001) and Voice server (5000). |
-
-### Swapping Characters
-*   **To change the 3D model:** Place a new `.vrm` file in the `/public` folder and update `vrm_path` in the config.
-*   **To change the voice:** Place your new RVC `.pth` and `.index` files in a folder and update the paths in `voice_settings`.
+| `rvc_enabled` | Set to `false` for instant responses on slow PCs. |
+| `base_voice` | Choose from various Microsoft Neural voices (e.g., `en-US-AvaMultilingualNeural`). |
+| `personality_prompt` | Edit her core behavior and "vibe." |
+| `temperature` | Increase (0.8+) for more creative teasing. |
 
 ---
-
-## 🎮 Running the App
-
-The easiest way to start Nazuna is by using the provided batch file:
-
-1.  Double-click **`START.bat`**.
-2.  Three windows will open:
-    *   **The Voice Server:** Handles the RVC processing.
-    *   **The Bridge:** Connects the AI logic and local memory.
-    *   **The Frontend:** Launches the 3D interface.
-3.  Your browser will open to `http://localhost:5173`.
-
----
-
-## 🧠 Memory & Features
-
-*   **Permanent Memory:** Nazuna learns facts about you (likes, hobbies, job) and saves them to `memory.json`. She will remember these even after you restart the app.
-*   **Chat History:** Conversations are saved to `chat_history.json` on your disk, not in the browser.
-*   **Call Mode:** Click the microphone icon to enable "Hands-Free" mode. You can talk to her, and she will respond automatically whenever you stop speaking.
-*   **Emotion Engine:** Nazuna reacts with 3D expressions (Happy, Relaxed, Surprised) based on the context of the chat.
-
----
-
-## ⚠️ Security Reminder
-**Never commit your `.env` file to GitHub.** This repository includes a `.gitignore` to protect your `memory.json` and `.env` files from being uploaded. 
-
----
-
 *Enjoy the night, Psycho.* 🦇🌙
